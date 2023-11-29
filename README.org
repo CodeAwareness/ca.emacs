@@ -1,0 +1,70 @@
+# -*- fill-column: 120 org-list-indent-offset: 1 toc-org-max-depth: 2 org-hide-emphasis-markers: nil -*-
+#+STARTUP: noinlineimages
+
+[[https://gitter.im/treemacs/community][file:https://badges.gitter.im/CodeAwareness/codeawareness-emacs.png]]
+[[https://melpa.org/#/treemacs][file:https://melpa.org/packages/codeawareness-badge.svg]]
+[[https://stable.melpa.org/#/treemacs][file:https://stable.melpa.org/packages/codeawareness-badge.svg]]
+
+* Code Awareness - a low noise collaboration toolset for Emacs     :noexport:
+
+[[file:screenshots/screenshot.png]]
+
+* Content                                                                            :TOC:noexport:
+- [[#state-of-development][State of Development]]
+- [[#quick-feature-overview][Quick Feature Overview]]
+- [[#quick-start][Quick Start]]
+- [[#compatibility][Compatibility]]
+- [[#faq][FAQ]]
+- [[#contributing][Contributing]]
+- [[#working-with-the-code-base][Working With The Code Base]]
+- [[#dependencies][Dependencies]]
+
+* State of Development
+
+Code Awarenes is currently in an active state of development. Feel free to submit feedback, PRs, etc.
+Other components of the Code Awareness ecosystem are also in active state of development, so please
+follow us on github or our website.
+
+* Quick Feature Overview
+Code Awareness highlights the code intersections between your working copy and other team member's.
+This provides an early warning system for merge conflicts, as well as instant traveling between
+working copies of multiple developers without needing to commit and push.
+
+* Quick Start
+ * Run the `codeawareness-mode` command to enter Code Awareness minor mode.
+
+* Compatibility
+- Nothing here yet.
+
+* FAQ
+- Nothing here yet.
+
+* Contributing
+Contributions are very much welcome, but should fit the general scope and style of Code Awareness.
+The following is a list of guidelines that should be met (exceptions confirm the rule):
+
+ - There should be one commit per feature.
+ - Commit messages should start with a note in brackets that roughly describes the area the commit relates to, for
+   example ~[Icons]~ if you add an icon.
+ - New features must be documented in the readme.
+ - There must not be any compiler warnings.
+ - The test suite must pass.
+
+Code Awareness uses cask to setup a local testing environment and a Makefile that simplifies compiling and testing the
+codebase. First run ~cask install~ to locally pull codeawareness' dependencies. Then you can use the following Makefile
+targets:
+
+ - make prepare :: Downloads and updates Cask's dependencies. Is a dependency of the ~test~ and ~compile~ targets.
+ - make compile :: Compiles the code base (and treats compiler warnings as errors).
+ - make clean :: Removes the generated .elc files.
+ - make lint :: Runs first ~compile~ then ~clean~, even if the former fails.
+ - make test :: Runs the testsuite, once in a graphical environment and once in the terminal.
+
+* Working With The Code Base
+
+If you want to delve into the codeawareness' code base, check out [[https://github.com/CodeAwareness/codeawareness-emacs/wiki][the wiki]] for some general pointers.
+
+* Dependencies
+ - emacs >= 26.1 (>= 27.1 for tab-bar)
+ - dex
+ - shasht

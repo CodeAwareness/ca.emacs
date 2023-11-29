@@ -1,0 +1,7 @@
+# -*- fill-column: 100 -*-
+#+STARTUP: content
+
+* Changelog
+
+** v1.0.0
+- initial beta testing
