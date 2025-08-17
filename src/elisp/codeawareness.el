@@ -46,6 +46,9 @@
 (defvar codeawareness--guid nil
   "Unique identifier for this Emacs instance.")
 
+(defvar codeawareness--client-registered nil
+  "Whether the client has been registered with the catalog service.")
+
 (defvar codeawareness--ipc-process nil
   "IPC process for communicating with the local service.")
 
@@ -263,6 +266,10 @@
 
 (defun codeawareness--register-client ()
   "Register this client with the catalog service."
+  (when codeawareness--client-registered
+    (codeawareness-log-info "Code Awareness: Client already registered, skipping")
+    (return-from codeawareness--register-client))
+  
   (let ((message (json-encode `((flow . "req")
                                 (domain . "*")
                                 (action . "clientId")
@@ -272,6 +279,7 @@
     (when codeawareness--ipc-catalog-process
       (process-send-string codeawareness--ipc-catalog-process (concat message "\f"))
       (codeawareness-log-info "Code Awareness: Client registration message sent")
+      (setq codeawareness--client-registered t)
       (codeawareness--init-server))))
 
 (defun codeawareness--init-server ()
@@ -283,6 +291,79 @@
   "Initialize workspace."
   (codeawareness-log-info "Code Awareness: Workspace initialized"))
 
+(defun codeawareness--force-cleanup ()
+  "Force cleanup of all Code Awareness processes and state."
+  (codeawareness-log-info "Code Awareness: Force cleaning up all processes")
+  
+  ;; Cancel any pending timers
+  (when codeawareness--update-timer
+    (cancel-timer codeawareness--update-timer)
+    (setq codeawareness--update-timer nil))
+  
+  ;; Force delete processes regardless of status
+  (when codeawareness--ipc-catalog-process
+    (condition-case err
+        (progn
+          (delete-process codeawareness--ipc-catalog-process)
+          (codeawareness-log-info "Code Awareness: Force deleted catalog process"))
+      (error
+       (codeawareness-log-error "Code Awareness: Error deleting catalog process: %s" err)))
+    (setq codeawareness--ipc-catalog-process nil))
+  
+  (when codeawareness--ipc-process
+    (condition-case err
+        (progn
+          (delete-process codeawareness--ipc-process)
+          (codeawareness-log-info "Code Awareness: Force deleted IPC process"))
+      (error
+       (codeawareness-log-error "Code Awareness: Error deleting IPC process: %s" err)))
+    (setq codeawareness--ipc-process nil))
+  
+  ;; Remove hooks
+  (remove-hook 'after-save-hook #'codeawareness--after-save-hook)
+  (remove-hook 'post-command-hook #'codeawareness--post-command-hook)
+  
+  ;; Reset all state
+  (setq codeawareness--connected nil
+        codeawareness--active-buffer nil
+        codeawareness--active-project nil
+        codeawareness--guid nil
+        codeawareness--client-registered nil)
+  
+  (codeawareness-log-info "Code Awareness: Force cleanup completed"))
+
+(defun codeawareness--send-disconnect-messages ()
+  "Send disconnect messages to both catalog and local service."
+  (codeawareness-log-info "Code Awareness: Sending disconnect messages")
+  
+  ;; Send disconnect message to catalog
+  (when (and codeawareness--ipc-catalog-process 
+             (eq (process-status codeawareness--ipc-catalog-process) 'open))
+    (let ((message (json-encode `((flow . "req")
+                                  (domain . "*")
+                                  (action . "clientDisconnect")
+                                  (data . ,codeawareness--guid)
+                                  (caw . ,codeawareness--guid)))))
+      (codeawareness-log-info "Code Awareness: Sending clientDisconnect to catalog: %s" message)
+      (condition-case err
+          (process-send-string codeawareness--ipc-catalog-process (concat message "\f"))
+        (error
+         (codeawareness-log-error "Code Awareness: Failed to send clientDisconnect to catalog: %s" err)))))
+  
+  ;; Send disconnect message to local service
+  (when (and codeawareness--ipc-process 
+             (eq (process-status codeawareness--ipc-process) 'open))
+    (let ((message (json-encode `((flow . "req")
+                                  (domain . "*")
+                                  (action . "auth:disconnect")
+                                  (data . ,codeawareness--guid)
+                                  (caw . ,codeawareness--guid)))))
+      (codeawareness-log-info "Code Awareness: Sending auth:disconnect to local service: %s" message)
+      (condition-case err
+          (process-send-string codeawareness--ipc-process (concat message "\f"))
+        (error
+         (codeawareness-log-error "Code Awareness: Failed to send auth:disconnect to local service: %s" err))))))
+
 (defun codeawareness--check-catalog-process-status ()
   "Check the status of the catalog process."
   (when codeawareness--ipc-catalog-process
@@ -290,9 +371,11 @@
       (codeawareness-log-info "Code Awareness: Catalog process status: %s" status)
       (if (eq status 'open)
           (progn
-            (codeawareness-log-info "Code Awareness: Process is open, triggering connected event")
-            ;; Manually trigger the connected event since sentinel might not be called
-            (codeawareness--catalog-filter codeawareness--ipc-catalog-process "connected"))
+            (codeawareness-log-info "Code Awareness: Process is open and ready")
+            ;; If client is not registered yet, trigger registration as fallback
+            (unless codeawareness--client-registered
+              (codeawareness-log-info "Code Awareness: Client not registered, triggering registration")
+              (codeawareness--catalog-filter codeawareness--ipc-catalog-process "connected")))
         (codeawareness-log-error "Code Awareness: Process is not open, status: %s" status)))))
 
 (defun codeawareness--schedule-reconnect ()
@@ -353,6 +436,13 @@
   "Refresh Code Awareness data."
   (interactive)
   (codeawareness--update))
+
+(defun codeawareness-disconnect ()
+  "Manually disconnect from Code Awareness services."
+  (interactive)
+  (codeawareness-log-info "Code Awareness: Manual disconnect requested")
+  (codeawareness--send-disconnect-messages)
+  (message "Code Awareness: Disconnect messages sent"))
 
 (defun codeawareness-test ()
   "Run basic Code Awareness tests."
@@ -426,17 +516,14 @@ Enable Code Awareness functionality for collaborative development."
 
 (defun codeawareness--disable ()
   "Disable Code Awareness."
-  (when codeawareness--update-timer
-    (cancel-timer codeawareness--update-timer))
-  (when codeawareness--ipc-process
-    (delete-process codeawareness--ipc-process))
-  (when codeawareness--ipc-catalog-process
-    (delete-process codeawareness--ipc-catalog-process))
-  (remove-hook 'after-save-hook #'codeawareness--after-save-hook)
-  (remove-hook 'post-command-hook #'codeawareness--post-command-hook)
-  (setq codeawareness--connected nil
-        codeawareness--active-buffer nil
-        codeawareness--active-project nil)
+  (codeawareness-log-info "Code Awareness: Disabling and disconnecting")
+  
+  ;; Send disconnect messages before closing connections
+  (codeawareness--send-disconnect-messages)
+  
+  ;; Use force cleanup to ensure all processes are properly deleted
+  (codeawareness--force-cleanup)
+  
   (codeawareness-log-info "Code Awareness disabled"))
 
 ;;; Keybindings
@@ -447,8 +534,23 @@ Enable Code Awareness functionality for collaborative development."
     (define-key map (kbd "C-c C-a r") #'codeawareness-refresh)
     (define-key map (kbd "C-c C-a T") #'codeawareness-test)
     (define-key map (kbd "C-c C-a l") #'codeawareness-show-log-buffer)
+    (define-key map (kbd "C-c C-a d") #'codeawareness-disconnect)
     map)
   "Keymap for Code Awareness mode.")
+
+;;; Cleanup on Emacs exit
+
+(defun codeawareness--cleanup-on-exit ()
+  "Cleanup Code Awareness when Emacs is about to exit."
+  (when codeawareness-mode
+    (codeawareness-log-info "Code Awareness: Emacs exiting, cleaning up connections")
+    ;; Send disconnect messages first, then force cleanup
+    (codeawareness--send-disconnect-messages)
+    ;; Force synchronous cleanup to ensure processes are deleted
+    (codeawareness--force-cleanup)))
+
+;; Register cleanup function to run when Emacs exits
+(add-hook 'kill-emacs-hook #'codeawareness--cleanup-on-exit)
 
 ;;; Provide
 
