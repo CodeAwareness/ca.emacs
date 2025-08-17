@@ -90,11 +90,11 @@
   "Get the socket path for the given GUID."
   (if (eq system-type 'windows-nt)
       (format "\\\\.\\pipe\\caw.%s" guid)
-    (format "%s/caw.%s" (temporary-file-directory) guid)))
+    (format "%s/caw.%s" (directory-file-name (temporary-file-directory)) guid)))
 
 (defun codeawareness--get-catalog-socket-path ()
   "Get the catalog socket path."
-  (codeawareness--get-socket-path codeawareness--pipe-catalog))
+  (codeawareness--get-socket-path codeawareness-catalog))
 
 (defun codeawareness--create-ipc-process (guid)
   "Create an IPC process for the given GUID."
@@ -211,22 +211,54 @@
   (let* ((catalog-path (codeawareness--get-catalog-socket-path))
          (process-name "codeawareness-catalog")
          (buffer-name "*codeawareness-catalog*"))
-    (setq codeawareness--ipc-catalog-process
-          (make-network-process
-           :name process-name
-           :buffer buffer-name
-           :family 'local
-           :service catalog-path
-           :sentinel #'codeawareness--catalog-sentinel
-           :filter #'codeawareness--catalog-filter))))
+    (codeawareness-log-info "Code Awareness: Connecting to catalog at %s" catalog-path)
+    (codeawareness-log-info "Code Awareness: Socket exists: %s" (file-exists-p catalog-path))
+    (condition-case err
+        (progn
+          (setq codeawareness--ipc-catalog-process
+                (make-network-process
+                 :name process-name
+                 :buffer buffer-name
+                 :family 'local
+                 :service catalog-path
+                 :sentinel #'codeawareness--catalog-sentinel
+                 :filter #'codeawareness--catalog-filter))
+          (codeawareness-log-info "Code Awareness: Catalog connection initiated")
+          (codeawareness-log-info "Code Awareness: Process created: %s" codeawareness--ipc-catalog-process)
+          ;; Check process status immediately and after a delay
+          (codeawareness--check-catalog-process-status)
+          (run-with-timer 0.5 nil #'codeawareness--check-catalog-process-status))
+      (error
+       (codeawareness-log-error "Code Awareness: Failed to create catalog connection: %s" err)
+       (message "Code Awareness: Failed to connect to catalog service at %s. Error: %s" 
+                catalog-path err)))))
 
 (defun codeawareness--catalog-sentinel (process event)
   "Handle catalog process sentinel events."
-  (codeawareness-log-info "Code Awareness Catalog: %s" event))
+  (codeawareness-log-info "Code Awareness Catalog: SENTINEL CALLED with event: %s" event)
+  (codeawareness-log-info "Code Awareness Catalog: Process: %s" process)
+  (cond
+   ((string-match "failed" event)
+    (codeawareness-log-error "Code Awareness: Failed to connect to catalog service at %s" 
+                            (codeawareness--get-catalog-socket-path))
+    (message "Code Awareness: Failed to connect to catalog service. Check if the service is running on %s" 
+             (codeawareness--get-catalog-socket-path))
+    (setq codeawareness--connected nil))
+   ((string-match "exited" event)
+    (codeawareness-log-warn "Code Awareness: Catalog connection closed")
+    (setq codeawareness--connected nil))
+   ((string-match "open" event)
+    (codeawareness-log-info "Code Awareness: Successfully connected to catalog service")
+    (message "Code Awareness: Connected to catalog service")
+    (setq codeawareness--connected t)
+    ;; Send 'connected' message to trigger client registration (matching VSCode behavior)
+    (codeawareness--catalog-filter process "connected"))))
 
 (defun codeawareness--catalog-filter (process data)
   "Handle catalog process data."
+  (codeawareness-log-info "Code Awareness Catalog: Received data: %s" data)
   (when (string= data "connected")
+    (codeawareness-log-info "Code Awareness: Catalog connection established, registering client")
     (codeawareness--register-client)))
 
 (defun codeawareness--register-client ()
@@ -236,8 +268,10 @@
                                 (action . "clientId")
                                 (data . ,codeawareness--guid)
                                 (caw . ,codeawareness--guid)))))
+    (codeawareness-log-info "Code Awareness: Registering client with message: %s" message)
     (when codeawareness--ipc-catalog-process
       (process-send-string codeawareness--ipc-catalog-process (concat message "\f"))
+      (codeawareness-log-info "Code Awareness: Client registration message sent")
       (codeawareness--init-server))))
 
 (defun codeawareness--init-server ()
@@ -248,6 +282,18 @@
 (defun codeawareness--init-workspace ()
   "Initialize workspace."
   (codeawareness-log-info "Code Awareness: Workspace initialized"))
+
+(defun codeawareness--check-catalog-process-status ()
+  "Check the status of the catalog process."
+  (when codeawareness--ipc-catalog-process
+    (let ((status (process-status codeawareness--ipc-catalog-process)))
+      (codeawareness-log-info "Code Awareness: Catalog process status: %s" status)
+      (if (eq status 'open)
+          (progn
+            (codeawareness-log-info "Code Awareness: Process is open, triggering connected event")
+            ;; Manually trigger the connected event since sentinel might not be called
+            (codeawareness--catalog-filter codeawareness--ipc-catalog-process "connected"))
+        (codeawareness-log-error "Code Awareness: Process is not open, status: %s" status)))))
 
 (defun codeawareness--schedule-reconnect ()
   "Schedule a reconnection attempt."
@@ -331,6 +377,30 @@
   (let ((path (codeawareness--get-socket-path "test-guid")))
     (message "Socket path: %s" path))
   
+  ;; Test catalog socket path
+  (let ((catalog-path (codeawareness--get-catalog-socket-path)))
+    (message "Catalog socket path: %s" catalog-path)
+    (message "Catalog socket exists: %s" (file-exists-p catalog-path))
+    (message "Catalog socket permissions: %s" (file-attributes catalog-path))
+    (message "Temporary directory: %s" (temporary-file-directory))
+    (message "Directory file name: %s" (directory-file-name (temporary-file-directory))))
+  
+  ;; Test current connection status
+  (message "Current catalog process: %s" codeawareness--ipc-catalog-process)
+  (message "Current IPC process: %s" codeawareness--ipc-process)
+  (message "Connected status: %s" codeawareness--connected)
+  
+  ;; Test if we can connect manually
+  (condition-case err
+      (let ((test-socket (make-network-process
+                          :name "test-catalog"
+                          :family 'local
+                          :service (codeawareness--get-catalog-socket-path))))
+        (message "Manual connection test: SUCCESS")
+        (delete-process test-socket))
+    (error
+     (message "Manual connection test: FAILED - %s" err)))
+  
   (message "Basic tests completed"))
 
 ;;; Minor Mode
@@ -375,6 +445,8 @@ Enable Code Awareness functionality for collaborative development."
   (let ((map (make-sparse-keymap)))
     (define-key map (kbd "C-c C-a t") #'codeawareness-toggle)
     (define-key map (kbd "C-c C-a r") #'codeawareness-refresh)
+    (define-key map (kbd "C-c C-a T") #'codeawareness-test)
+    (define-key map (kbd "C-c C-a l") #'codeawareness-show-log-buffer)
     map)
   "Keymap for Code Awareness mode.")
 
