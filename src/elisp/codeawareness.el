@@ -110,7 +110,8 @@
      :family 'local
      :service socket-path
      :sentinel #'codeawareness--ipc-sentinel
-     :filter #'codeawareness--ipc-filter)))
+     :filter #'codeawareness--ipc-filter
+     :noquery t)))
 
 (defun codeawareness--ipc-sentinel (process event)
   "Handle IPC process sentinel events."
@@ -218,14 +219,15 @@
     (codeawareness-log-info "Code Awareness: Socket exists: %s" (file-exists-p catalog-path))
     (condition-case err
         (progn
-          (setq codeawareness--ipc-catalog-process
-                (make-network-process
-                 :name process-name
-                 :buffer buffer-name
-                 :family 'local
-                 :service catalog-path
-                 :sentinel #'codeawareness--catalog-sentinel
-                 :filter #'codeawareness--catalog-filter))
+                  (setq codeawareness--ipc-catalog-process
+              (make-network-process
+               :name process-name
+               :buffer buffer-name
+               :family 'local
+               :service catalog-path
+               :sentinel #'codeawareness--catalog-sentinel
+               :filter #'codeawareness--catalog-filter
+               :noquery t))
           (codeawareness-log-info "Code Awareness: Catalog connection initiated")
           (codeawareness-log-info "Code Awareness: Process created: %s" codeawareness--ipc-catalog-process)
           ;; Check process status immediately and after a delay
@@ -304,6 +306,10 @@
   (when codeawareness--ipc-catalog-process
     (condition-case err
         (progn
+          ;; Try to close the process gracefully first
+          (when (eq (process-status codeawareness--ipc-catalog-process) 'open)
+            (process-send-eof codeawareness--ipc-catalog-process))
+          ;; Force delete the process
           (delete-process codeawareness--ipc-catalog-process)
           (codeawareness-log-info "Code Awareness: Force deleted catalog process"))
       (error
@@ -313,6 +319,10 @@
   (when codeawareness--ipc-process
     (condition-case err
         (progn
+          ;; Try to close the process gracefully first
+          (when (eq (process-status codeawareness--ipc-process) 'open)
+            (process-send-eof codeawareness--ipc-process))
+          ;; Force delete the process
           (delete-process codeawareness--ipc-process)
           (codeawareness-log-info "Code Awareness: Force deleted IPC process"))
       (error
@@ -535,10 +545,33 @@ Enable Code Awareness functionality for collaborative development."
     (define-key map (kbd "C-c C-a T") #'codeawareness-test)
     (define-key map (kbd "C-c C-a l") #'codeawareness-show-log-buffer)
     (define-key map (kbd "C-c C-a d") #'codeawareness-disconnect)
+    (define-key map (kbd "C-c C-a x") #'codeawareness--handle-exit-request)
     map)
   "Keymap for Code Awareness mode.")
 
 ;;; Cleanup on Emacs exit
+
+(defun codeawareness--pre-exit-cleanup ()
+  "Pre-exit cleanup that runs before Emacs checks for active processes."
+  (when codeawareness-mode
+    (codeawareness-log-info "Code Awareness: Pre-exit cleanup triggered")
+    ;; Send disconnect messages first
+    (codeawareness--send-disconnect-messages)
+    ;; Force cleanup to remove processes before Emacs checks
+    (codeawareness--force-cleanup)
+    ;; Return nil to allow normal exit to continue
+    nil))
+
+(defun codeawareness--buffer-kill-cleanup ()
+  "Cleanup when the last buffer is being killed (potential exit scenario)."
+  (when (and codeawareness-mode
+             ;; Only trigger if this is the last buffer
+             (= (length (buffer-list)) 1))
+    (codeawareness-log-info "Code Awareness: Last buffer being killed, cleaning up")
+    (codeawareness--send-disconnect-messages)
+    (codeawareness--force-cleanup)
+    ;; Return nil to allow buffer kill to continue
+    nil))
 
 (defun codeawareness--cleanup-on-exit ()
   "Cleanup Code Awareness when Emacs is about to exit."
@@ -549,8 +582,19 @@ Enable Code Awareness functionality for collaborative development."
     ;; Force synchronous cleanup to ensure processes are deleted
     (codeawareness--force-cleanup)))
 
-;; Register cleanup function to run when Emacs exits
+;; Register cleanup functions to run when Emacs exits
 (add-hook 'kill-emacs-hook #'codeawareness--cleanup-on-exit)
+
+;; Add a function to handle the specific case where we're about to exit
+(defun codeawareness--handle-exit-request ()
+  "Handle exit requests by cleaning up before Emacs checks for active processes."
+  (interactive)
+  (when codeawareness-mode
+    (codeawareness-log-info "Code Awareness: Exit request detected, cleaning up")
+    (codeawareness--send-disconnect-messages)
+    (codeawareness--force-cleanup)))
+
+
 
 ;;; Provide
 
