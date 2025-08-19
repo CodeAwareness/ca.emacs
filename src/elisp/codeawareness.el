@@ -108,6 +108,20 @@
 (defvar codeawareness--tokens nil
   "Authentication tokens.")
 
+(defvar codeawareness--authenticated nil
+  "Whether the client is authenticated with the local service.")
+
+;;; Highlighting System
+
+(defvar codeawareness--highlights (make-hash-table :test 'equal)
+  "Hash table of highlights by buffer, tracking line numbers and overlay objects.")
+
+(defvar codeawareness--highlight-faces nil
+  "Predefined faces for different types of highlights.")
+
+(defvar codeawareness--highlight-timer nil
+  "Timer for debounced highlight refresh.")
+
 ;;; Configuration
 
 (defun codeawareness--init-config ()
@@ -138,13 +152,15 @@
   (codeawareness-log-info "Code Awareness: Clearing store")
   (setq codeawareness--tokens nil
         codeawareness--user nil
+        codeawareness--authenticated nil
         codeawareness--active-project nil
         codeawareness--active-buffer nil
         codeawareness--active-selections nil
         codeawareness--selected-peer nil
         codeawareness--color-theme 1
         codeawareness--tmp-dir "/tmp/caw.emacs"
-        codeawareness--peer-fs (make-hash-table :test 'equal))
+        codeawareness--peer-fs (make-hash-table :test 'equal)
+        codeawareness--poll-attempts 0)
   (codeawareness--init-store))
 
 (defun codeawareness--reset-store ()
@@ -190,16 +206,166 @@
 
 (defun codeawareness--refresh-active-file ()
   "Refresh the currently active file by sending repo:active-path message."
-  (let ((fpath (codeawareness--get-active-file-path))
-        (doc (codeawareness--get-active-file-content)))
-    (if (not fpath)
-        (codeawareness-log-info "Code Awareness: No active file to refresh")
-      (codeawareness-log-info "Code Awareness: Refreshing active file %s" fpath)
-      (let ((message-data `((fpath . ,(codeawareness--cross-platform-path fpath))
-                            (doc . ,doc)
-                            (caw . ,codeawareness--guid))))
-        (codeawareness--transmit "repo:active-path" message-data)
-        (codeawareness--setup-response-handler "code" "repo:active-path")))))
+  (if (not codeawareness--authenticated)
+      (codeawareness-log-warn "Code Awareness: Not authenticated, skipping file refresh")
+    (let ((fpath (codeawareness--get-active-file-path))
+          (doc (codeawareness--get-active-file-content)))
+      (if (not fpath)
+          (codeawareness-log-info "Code Awareness: No active file to refresh")
+        (codeawareness-log-info "Code Awareness: Refreshing active file %s" fpath)
+        (let ((message-data `((fpath . ,(codeawareness--cross-platform-path fpath))
+                              (doc . ,doc)
+                              (caw . ,codeawareness--guid))))
+          (codeawareness--transmit "repo:active-path" message-data)
+          (codeawareness--setup-response-handler "code" "repo:active-path"))))))
+
+;;; Highlighting System
+
+(defun codeawareness--init-highlight-faces ()
+  "Initialize predefined faces for different highlight types."
+  (setq codeawareness--highlight-faces
+        `((conflict . ,(make-face 'codeawareness-conflict-face))
+          (overlap . ,(make-face 'codeawareness-overlap-face))
+          (peer . ,(make-face 'codeawareness-peer-face))
+          (modified . ,(make-face 'codeawareness-modified-face))))
+  
+  ;; Set face attributes based on color theme
+  (let ((conflict-face (alist-get 'conflict codeawareness--highlight-faces))
+        (overlap-face (alist-get 'overlap codeawareness--highlight-faces))
+        (peer-face (alist-get 'peer codeawareness--highlight-faces))
+        (modified-face (alist-get 'modified codeawareness--highlight-faces)))
+    
+    ;; Conflict highlights (red background)
+    (set-face-attribute conflict-face nil
+                        :background "#ffcccc"
+                        :foreground "#cc0000"
+                        :weight 'bold)
+    
+    ;; Overlap highlights (yellow background)
+    (set-face-attribute overlap-face nil
+                        :background "#ffffcc"
+                        :foreground "#cc6600"
+                        :weight 'normal)
+    
+    ;; Peer highlights (blue background)
+    (set-face-attribute peer-face nil
+                        :background "#cce5ff"
+                        :foreground "#0066cc"
+                        :weight 'normal)
+    
+    ;; Modified highlights (green background)
+    (set-face-attribute modified-face nil
+                        :background "#ccffcc"
+                        :foreground "#006600"
+                        :weight 'normal))
+  
+  (codeawareness-log-info "Code Awareness: Highlight faces initialized"))
+
+(defun codeawareness--get-highlight-face (type)
+  "Get the face for the given highlight type."
+  (alist-get type codeawareness--highlight-faces))
+
+(defun codeawareness--create-line-overlay (buffer line-number face &optional properties)
+  "Create an overlay for a specific line in the given buffer."
+  (when (and buffer (buffer-live-p buffer))
+    (with-current-buffer buffer
+      (let* ((line-count (line-number-at-pos (point-max)))
+             (start (line-beginning-position line-number))
+             (end (line-end-position line-number)))
+        (when (and (<= line-number line-count) (>= line-number 1))
+          (let ((overlay (make-overlay start end buffer t nil)))
+            (overlay-put overlay 'face face)
+            (overlay-put overlay 'codeawareness-type 'line-highlight)
+            (overlay-put overlay 'codeawareness-line line-number)
+            ;; Add any additional properties
+            (when properties
+              (dolist (prop properties)
+                (overlay-put overlay (car prop) (cdr prop))))
+            overlay))))))
+
+(defun codeawareness--clear-buffer-highlights (buffer)
+  "Clear all Code Awareness highlights from the given buffer."
+  (when (and buffer (buffer-live-p buffer))
+    (with-current-buffer buffer
+      (dolist (overlay (overlays-in (point-min) (point-max)))
+        (when (overlay-get overlay 'codeawareness-type)
+          (delete-overlay overlay))))
+    ;; Remove from highlights hash table
+    (remhash buffer codeawareness--highlights)
+    (codeawareness-log-info "Code Awareness: Cleared highlights for buffer %s" buffer)))
+
+(defun codeawareness--clear-all-highlights ()
+  "Clear all Code Awareness highlights from all buffers."
+  (dolist (buffer (buffer-list))
+    (codeawareness--clear-buffer-highlights buffer))
+  (clrhash codeawareness--highlights)
+  (codeawareness-log-info "Code Awareness: Cleared all highlights"))
+
+(defun codeawareness--add-highlight (buffer line-number type &optional properties)
+  "Add a highlight to the specified line in the given buffer."
+  (when (and buffer line-number type)
+    (let* ((face (codeawareness--get-highlight-face type))
+           (overlay (codeawareness--create-line-overlay buffer line-number face properties)))
+      (when overlay
+        ;; Store highlight information
+        (let ((buffer-highlights (gethash buffer codeawareness--highlights)))
+          (unless buffer-highlights
+            (setq buffer-highlights (make-hash-table :test 'equal))
+            (puthash buffer buffer-highlights codeawareness--highlights))
+          (puthash line-number overlay buffer-highlights))
+        (codeawareness-log-info "Code Awareness: Added %s highlight to line %d in buffer %s" 
+                                type line-number buffer)
+        overlay))))
+
+(defun codeawareness--remove-highlight (buffer line-number)
+  "Remove a highlight from the specified line in the given buffer."
+  (let* ((buffer-highlights (gethash buffer codeawareness--highlights))
+         (overlay (when buffer-highlights (gethash line-number buffer-highlights))))
+    (when overlay
+      (delete-overlay overlay)
+      (remhash line-number buffer-highlights)
+      (codeawareness-log-info "Code Awareness: Removed highlight from line %d in buffer %s" 
+                              line-number buffer))))
+
+(defun codeawareness--refresh-buffer-highlights (buffer)
+  "Refresh highlights for the given buffer by recreating them."
+  (when (and buffer (buffer-live-p buffer))
+    (let ((buffer-highlights (gethash buffer codeawareness--highlights)))
+      (when buffer-highlights
+        (codeawareness-log-info "Code Awareness: Refreshing highlights for buffer %s" buffer)
+        ;; Clear existing overlays
+        (codeawareness--clear-buffer-highlights buffer)
+        ;; Recreate highlights from stored data
+        (maphash (lambda (line-number highlight-data)
+                   (let ((type (overlay-get highlight-data 'codeawareness-highlight-type))
+                         (properties (overlay-get highlight-data 'codeawareness-properties)))
+                     (codeawareness--add-highlight buffer line-number type properties)))
+                 buffer-highlights)))))
+
+(defun codeawareness--schedule-highlight-refresh (buffer)
+  "Schedule a debounced highlight refresh for the given buffer."
+  (when codeawareness--highlight-timer
+    (cancel-timer codeawareness--highlight-timer))
+  (setq codeawareness--highlight-timer
+        (run-with-timer 0.5 nil #'codeawareness--refresh-buffer-highlights buffer)))
+
+(defun codeawareness--apply-highlights-from-data (buffer highlight-data)
+  "Apply highlights to buffer based on data from the local service."
+  (when (and buffer (buffer-live-p buffer) highlight-data)
+    (codeawareness-log-info "Code Awareness: Applying highlights to buffer %s" buffer)
+    ;; Clear existing highlights first
+    (codeawareness--clear-buffer-highlights buffer)
+    
+    ;; Apply new highlights
+    (dolist (highlight highlight-data)
+      (let ((line (alist-get 'line highlight))
+            (type (alist-get 'type highlight))
+            (properties (alist-get 'properties highlight)))
+        (when (and line type)
+          (codeawareness--add-highlight buffer line type properties))))
+    
+    (codeawareness-log-info "Code Awareness: Applied %d highlights to buffer %s" 
+                            (length highlight-data) buffer)))
 
 ;;; IPC Communication
 
@@ -233,7 +399,10 @@
 
 (defun codeawareness--ipc-sentinel (process event)
   "Handle IPC process sentinel events."
-  (codeawareness-log-info "Code Awareness IPC: %s" event)
+  (codeawareness-log-info "Code Awareness IPC SENTINEL CALLED with event: %s" event)
+  (codeawareness-log-info "Code Awareness IPC: Process: %s" process)
+  (codeawareness-log-info "Code Awareness IPC: Process status: %s" 
+                          (if process (process-status process) "nil"))
   (cond
    ((string-match "failed" event)
     (codeawareness-log-error "Code Awareness: Local service connection failed")
@@ -243,11 +412,18 @@
    ((string-match "exited" event)
     (codeawareness-log-warn "Code Awareness: Local service connection closed")
     (setq codeawareness--connected nil))
+   ((string-match "connection broken by remote peer" event)
+    (codeawareness-log-warn "Code Awareness: Local service rejected connection")
+    (setq codeawareness--connected nil)
+    ;; Retry connection after a delay
+    (run-with-timer 2.0 nil #'codeawareness--connect-to-local-service))
    ((string-match "open" event)
     (codeawareness-log-info "Code Awareness: Successfully connected to local service")
     (setq codeawareness--connected t)
-    ;; Send auth:info once connected
-    (codeawareness--transmit "auth:info" nil))))
+    ;; Initialize workspace after connection (like VS Code)
+    (codeawareness--init-workspace))
+   (t
+    (codeawareness-log-warn "Code Awareness: Unknown IPC sentinel event: %s" event))))
 
 (defun codeawareness--ipc-filter (process data)
   "Handle IPC process data."
@@ -306,8 +482,26 @@
   (codeawareness-log-info "Code Awareness: Project data: %s" data)
   ;; Add the project to our store
   (codeawareness--add-project data)
-  ;; TODO: Update decorations (will implement in Phase 3)
+  ;; Apply highlights if available in the response
+  (let ((highlights (alist-get 'highlights data))
+        (buffer codeawareness--active-buffer))
+    (when (and highlights buffer (buffer-live-p buffer))
+      (codeawareness--apply-highlights-from-data buffer highlights)))
   (codeawareness-log-info "Code Awareness: Project added successfully"))
+
+(defun codeawareness--handle-auth-info-response (data)
+  "Handle response from auth:info request."
+  (codeawareness-log-info "Code Awareness: Received auth:info response")
+  (codeawareness-log-info "Code Awareness: Auth data: %s" data)
+  (if data
+      (progn
+        (setq codeawareness--user (alist-get 'user data))
+        (setq codeawareness--tokens (alist-get 'tokens data))
+        (setq codeawareness--authenticated t)
+        (codeawareness-log-info "Code Awareness: Authentication successful")
+        (message "Code Awareness: Authenticated as %s" (alist-get 'name codeawareness--user)))
+    (setq codeawareness--authenticated nil)
+    (codeawareness-log-warn "Code Awareness: No authentication data received")))
 
 (defun codeawareness--handle-error (domain action error-data)
   "Handle an IPC error."
@@ -348,6 +542,8 @@
     (cond
      ((string= (format "%s:%s" domain action) "code:repo:active-path")
       (puthash res-key #'codeawareness--handle-repo-active-path-response codeawareness--response-handlers))
+     ((string= (format "%s:%s" domain action) "*:auth:info")
+      (puthash res-key #'codeawareness--handle-auth-info-response codeawareness--response-handlers))
      (t
       (puthash res-key #'codeawareness--handle-success codeawareness--response-handlers)))
     (puthash err-key #'codeawareness--handle-failure codeawareness--response-handlers)))
@@ -444,12 +640,57 @@
 
 (defun codeawareness--init-server ()
   "Initialize the server connection."
-  (codeawareness--connect-to-local-service)
-  (codeawareness--init-workspace))
+  (codeawareness-log-info "Code Awareness: Initializing server connection")
+  ;; Start polling for local service socket with exponential backoff
+  (codeawareness--poll-for-local-service))
 
 (defun codeawareness--init-workspace ()
   "Initialize workspace."
-  (codeawareness-log-info "Code Awareness: Workspace initialized"))
+  (codeawareness-log-info "Code Awareness: Workspace initialized")
+  ;; Send auth:info request after a short delay to ensure connection is ready
+  (codeawareness-log-info "Code Awareness: About to send auth:info request")
+  (run-with-timer 0.1 nil #'codeawareness--send-auth-info))
+
+(defun codeawareness--send-auth-info ()
+  "Send auth:info request to the local service."
+  (codeawareness-log-info "Code Awareness: Sending auth:info request")
+  (codeawareness-log-info "Code Awareness: IPC process status: %s" 
+                          (if codeawareness--ipc-process 
+                              (process-status codeawareness--ipc-process) 
+                            "nil"))
+  (if (and codeawareness--ipc-process 
+           (eq (process-status codeawareness--ipc-process) 'open))
+      (codeawareness--transmit "auth:info" nil)
+    (codeawareness-log-error "Code Awareness: IPC process not ready for auth:info request")))
+
+(defvar codeawareness--poll-attempts 0
+  "Number of polling attempts for local service socket.")
+
+(defvar codeawareness--max-poll-attempts 10
+  "Maximum number of polling attempts.")
+
+(defun codeawareness--poll-for-local-service ()
+  "Poll for local service socket with exponential backoff."
+  (let ((socket-path (codeawareness--get-socket-path codeawareness--guid)))
+    (codeawareness-log-info "Code Awareness: Polling for local service socket (attempt %d/%d): %s" 
+                            (1+ codeawareness--poll-attempts) codeawareness--max-poll-attempts socket-path)
+    
+    (if (file-exists-p socket-path)
+        (progn
+          (codeawareness-log-info "Code Awareness: Local service socket found, connecting")
+          (setq codeawareness--poll-attempts 0)
+          (codeawareness--connect-to-local-service))
+      (if (>= codeawareness--poll-attempts codeawareness--max-poll-attempts)
+          (progn
+            (codeawareness-log-error "Code Awareness: Failed to find local service socket after %d attempts" 
+                                    codeawareness--max-poll-attempts)
+            (message "Code Awareness: Failed to connect to local service after %d attempts" 
+                     codeawareness--max-poll-attempts))
+        (setq codeawareness--poll-attempts (1+ codeawareness--poll-attempts))
+        ;; Exponential backoff: 0.5s, 1s, 2s, 4s, 8s, etc.
+        (let ((delay (expt 2 (1- codeawareness--poll-attempts))))
+          (codeawareness-log-info "Code Awareness: Socket not found, retrying in %.1f seconds" delay)
+          (run-with-timer delay nil #'codeawareness--poll-for-local-service))))))
 
 (defun codeawareness--connect-to-local-service ()
   "Connect to the local service with retry logic."
@@ -462,6 +703,7 @@
     
     (condition-case err
         (progn
+          (codeawareness-log-info "Code Awareness: Creating network process...")
           (setq codeawareness--ipc-process
                 (make-network-process
                  :name process-name
@@ -471,12 +713,33 @@
                  :sentinel #'codeawareness--ipc-sentinel
                  :filter #'codeawareness--ipc-filter
                  :noquery t))
-          (codeawareness-log-info "Code Awareness: Local service connection initiated"))
+          (codeawareness-log-info "Code Awareness: Network process created: %s" codeawareness--ipc-process)
+          (codeawareness-log-info "Code Awareness: Process status after creation: %s" 
+                                  (if codeawareness--ipc-process 
+                                      (process-status codeawareness--ipc-process) 
+                                    "nil"))
+          (codeawareness-log-info "Code Awareness: Local service connection initiated")
+          ;; Set up a timeout to detect stuck connections
+          (run-with-timer 5.0 nil #'codeawareness--check-connection-timeout)))
       (error
        (codeawareness-log-warn "Code Awareness: Failed to connect to local service, will retry in 2 seconds")
        (codeawareness-log-warn "Code Awareness: Error: %s" err)
        ;; Schedule retry
        (run-with-timer 2.0 nil #'codeawareness--connect-to-local-service)))))
+
+(defun codeawareness--check-connection-timeout ()
+  "Check if the connection is stuck and handle timeout."
+  (when (and codeawareness--ipc-process 
+             (not codeawareness--connected))
+    (let ((status (process-status codeawareness--ipc-process)))
+      (codeawareness-log-warn "Code Awareness: Connection timeout check - status: %s" status)
+      (if (eq status 'connect)
+          (progn
+            (codeawareness-log-error "Code Awareness: Connection stuck in 'connect' state, retrying")
+            (delete-process codeawareness--ipc-process)
+            (setq codeawareness--ipc-process nil)
+            (run-with-timer 1.0 nil #'codeawareness--connect-to-local-service))
+        (codeawareness-log-info "Code Awareness: Connection timeout check - status is %s, not stuck" status))))))
 
 (defun codeawareness--force-cleanup ()
   "Force cleanup of all Code Awareness processes and state."
@@ -486,6 +749,9 @@
   (when codeawareness--update-timer
     (cancel-timer codeawareness--update-timer)
     (setq codeawareness--update-timer nil))
+  (when codeawareness--highlight-timer
+    (cancel-timer codeawareness--highlight-timer)
+    (setq codeawareness--highlight-timer nil))
   
   ;; Force delete processes regardless of status
   (when codeawareness--ipc-catalog-process
@@ -520,10 +786,12 @@
   
   ;; Reset all state
   (setq codeawareness--connected nil
+        codeawareness--authenticated nil
         codeawareness--active-buffer nil
         codeawareness--active-project nil
         codeawareness--guid nil
-        codeawareness--client-registered nil)
+        codeawareness--client-registered nil
+        codeawareness--poll-attempts 0)
   
   (codeawareness-log-info "Code Awareness: Force cleanup completed"))
 
@@ -608,7 +876,10 @@
 
 (defun codeawareness--after-save-hook ()
   "Hook function for after-save-hook."
-  (codeawareness--update))
+  (codeawareness--update)
+  ;; Refresh highlights after save to ensure they're still valid
+  (when codeawareness--active-buffer
+    (codeawareness--schedule-highlight-refresh codeawareness--active-buffer)))
 
 (defun codeawareness--post-command-hook ()
   "Hook function for post-command-hook."
@@ -616,7 +887,9 @@
     (when (and current-buffer
                (not (eq current-buffer codeawareness--active-buffer))
                (buffer-file-name current-buffer))
-      (codeawareness--set-active-buffer current-buffer))))
+      ;; Set the active buffer and refresh immediately (like VS Code's onDidChangeActiveTextEditor)
+      (setq codeawareness--active-buffer current-buffer)
+      (codeawareness--refresh-active-file))))
 
 ;;; Public API
 
@@ -631,6 +904,68 @@
   "Refresh Code Awareness data."
   (interactive)
   (codeawareness--refresh-active-file))
+
+(defun codeawareness-clear-highlights ()
+  "Clear all Code Awareness highlights from the current buffer."
+  (interactive)
+  (codeawareness--clear-buffer-highlights (current-buffer))
+  (message "Code Awareness: Cleared highlights"))
+
+(defun codeawareness-clear-all-highlights ()
+  "Clear all Code Awareness highlights from all buffers."
+  (interactive)
+  (codeawareness--clear-all-highlights)
+  (message "Code Awareness: Cleared all highlights"))
+
+(defun codeawareness-refresh-highlights ()
+  "Refresh highlights for the current buffer."
+  (interactive)
+  (codeawareness--refresh-buffer-highlights (current-buffer))
+  (message "Code Awareness: Refreshed highlights"))
+
+(defun codeawareness-auth-status ()
+  "Show the current authentication status."
+  (interactive)
+  (if codeawareness--authenticated
+      (message "Code Awareness: Authenticated as %s" (alist-get 'name codeawareness--user))
+    (message "Code Awareness: Not authenticated")))
+
+(defun codeawareness-connection-status ()
+  "Show the current connection status."
+  (interactive)
+  (message "Code Awareness: Catalog connected: %s, Local service connected: %s, Authenticated: %s, Client registered: %s"
+           (if (and codeawareness--ipc-catalog-process 
+                    (eq (process-status codeawareness--ipc-catalog-process) 'open)) "yes" "no")
+           (if (and codeawareness--ipc-process 
+                    (eq (process-status codeawareness--ipc-process) 'open)) "yes" "no")
+           (if codeawareness--authenticated "yes" "no")
+           (if codeawareness--client-registered "yes" "no")))
+
+(defun codeawareness-debug-connection ()
+  "Show detailed connection debug information."
+  (interactive)
+  (let ((catalog-status (if codeawareness--ipc-catalog-process 
+                            (process-status codeawareness--ipc-catalog-process) 
+                          "nil"))
+        (local-status (if codeawareness--ipc-process 
+                          (process-status codeawareness--ipc-process) 
+                        "nil")))
+    (message "Code Awareness Debug: Catalog process: %s (status: %s), Local process: %s (status: %s), Connected: %s, Authenticated: %s"
+             codeawareness--ipc-catalog-process catalog-status
+             codeawareness--ipc-process local-status
+             codeawareness--connected
+             codeawareness--authenticated)))
+
+(defun codeawareness-retry-connection ()
+  "Manually retry the connection to the local service."
+  (interactive)
+  (codeawareness-log-info "Code Awareness: Manual connection retry requested")
+  (when codeawareness--ipc-process
+    (delete-process codeawareness--ipc-process)
+    (setq codeawareness--ipc-process nil))
+  (setq codeawareness--connected nil)
+  (run-with-timer 0.5 nil #'codeawareness--connect-to-local-service)
+  (message "Code Awareness: Connection retry initiated"))
 
 (defun codeawareness-disconnect ()
   "Manually disconnect from Code Awareness services."
@@ -706,6 +1041,7 @@ Enable Code Awareness functionality for collaborative development."
   (codeawareness--init-config)
   (codeawareness--init-store)
   (codeawareness--init-ipc)
+  (codeawareness--init-highlight-faces)
   (add-hook 'after-save-hook #'codeawareness--after-save-hook)
   (add-hook 'post-command-hook #'codeawareness--post-command-hook)
   (codeawareness-log-info "Code Awareness enabled"))
@@ -713,6 +1049,9 @@ Enable Code Awareness functionality for collaborative development."
 (defun codeawareness--disable ()
   "Disable Code Awareness."
   (codeawareness-log-info "Code Awareness: Disabling and disconnecting")
+  
+  ;; Clear all highlights
+  (codeawareness--clear-all-highlights)
   
   ;; Send disconnect messages before closing connections
   (codeawareness--send-disconnect-messages)
@@ -735,6 +1074,15 @@ Enable Code Awareness functionality for collaborative development."
     (define-key map (kbd "C-c C-a l") #'codeawareness-show-log-buffer)
     (define-key map (kbd "C-c C-a d") #'codeawareness-disconnect)
     (define-key map (kbd "C-c C-a x") #'codeawareness--handle-exit-request)
+    ;; Highlight management
+    (define-key map (kbd "C-c C-a h") #'codeawareness-clear-highlights)
+    (define-key map (kbd "C-c C-a H") #'codeawareness-clear-all-highlights)
+    (define-key map (kbd "C-c C-a R") #'codeawareness-refresh-highlights)
+    ;; Authentication
+    (define-key map (kbd "C-c C-a s") #'codeawareness-auth-status)
+    (define-key map (kbd "C-c C-a c") #'codeawareness-connection-status)
+    (define-key map (kbd "C-c C-a D") #'codeawareness-debug-connection)
+    (define-key map (kbd "C-c C-a y") #'codeawareness-retry-connection)
     map)
   "Keymap for Code Awareness mode.")
 
