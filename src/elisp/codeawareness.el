@@ -399,11 +399,7 @@
 
 (defun codeawareness--ipc-sentinel (process event)
   "Handle IPC process sentinel events."
-  (codeawareness-log-info "Code Awareness IPC SENTINEL CALLED with event: %s" event)
-  (codeawareness-log-info "Code Awareness IPC: Process: %s" process)
-  (codeawareness-log-info "Code Awareness IPC: Process status: %s" 
-                          (if process (process-status process) "nil"))
-  (codeawareness-log-info "Code Awareness IPC: Expected process: %s" codeawareness--ipc-process)
+  (codeawareness-log-info "Code Awareness IPC: %s" event)
   (cond
    ((string-match "failed" event)
     (codeawareness-log-error "Code Awareness: Local service connection failed")
@@ -428,7 +424,7 @@
 
 (defun codeawareness--ipc-filter (process data)
   "Handle IPC process data."
-  (codeawareness-log-info "Code Awareness: Received raw data from IPC: %s" data)
+  (codeawareness-log-info "Code Awareness: Received IPC data: %s" data)
   (let ((buffer (process-buffer process)))
     (when buffer
       (with-current-buffer buffer
@@ -450,7 +446,6 @@
 
 (defun codeawareness--handle-ipc-message (message)
   "Handle a single IPC message."
-  (codeawareness-log-info "Code Awareness: Received IPC message: %s" message)
   (condition-case err
       (let* ((data (json-read-from-string message))
              (flow (alist-get 'flow data))
@@ -459,8 +454,7 @@
              (response-data (alist-get 'data data))
              (error-data (alist-get 'err data))
              (caw (alist-get 'caw data)))
-        (codeawareness-log-info "Code Awareness: Parsed message - flow: %s, domain: %s, action: %s, caw: %s" 
-                                flow domain action caw)
+        (codeawareness-log-info "Code Awareness: %s:%s" domain action)
         (if (and (string= flow "res") action)
             (codeawareness--handle-response domain action response-data)
           (if (and (string= flow "err") action)
@@ -494,7 +488,7 @@
   "Handle response from auth:info request."
   (codeawareness-log-info "Code Awareness: Received auth:info response")
   (codeawareness-log-info "Code Awareness: Auth data: %s" data)
-  (if data
+  (if (and data (not (string= data "")) (listp data))
       (progn
         (setq codeawareness--user (alist-get 'user data))
         (setq codeawareness--tokens (alist-get 'tokens data))
@@ -502,7 +496,7 @@
         (codeawareness-log-info "Code Awareness: Authentication successful")
         (message "Code Awareness: Authenticated as %s" (alist-get 'name codeawareness--user)))
     (setq codeawareness--authenticated nil)
-    (codeawareness-log-warn "Code Awareness: No authentication data received")))
+    (codeawareness-log-warn "Code Awareness: No authentication data received - user needs to authenticate")))
 
 (defun codeawareness--handle-error (domain action error-data)
   "Handle an IPC error."
@@ -521,16 +515,9 @@
                                 (action . ,action)
                                 (data . ,data)
                                 (caw . ,codeawareness--guid)))))
-    ;; Log data in a truncated format to avoid huge log output
-    (let ((data-summary (if (and data (alist-get 'doc data))
-                            (format "((fpath . %s) (doc . [%d chars]))" 
-                                    (alist-get 'fpath data) 
-                                    (length (alist-get 'doc data)))
-                          (format "%s" data))))
-      (codeawareness-log-info "Code Awareness: Transmitting %s:%s with data: %s" domain action data-summary))
     (if codeawareness--ipc-process
         (progn
-          (codeawareness-log-info "Code Awareness: Sending message: %s" message)
+          (codeawareness-log-info "Code Awareness: Sending %s:%s" domain action)
           (process-send-string codeawareness--ipc-process (concat message "\f"))
           (codeawareness--setup-response-handler domain action))
       (codeawareness-log-error "Code Awareness: No IPC process available for transmission"))))
@@ -570,8 +557,7 @@
   (let* ((catalog-path (codeawareness--get-catalog-socket-path))
          (process-name "codeawareness-catalog")
          (buffer-name "*codeawareness-catalog*"))
-    (codeawareness-log-info "Code Awareness: Connecting to catalog at %s" catalog-path)
-    (codeawareness-log-info "Code Awareness: Socket exists: %s" (file-exists-p catalog-path))
+    (codeawareness-log-info "Code Awareness: Connecting to catalog")
     (condition-case err
         (progn
                   (setq codeawareness--ipc-catalog-process
@@ -584,7 +570,6 @@
                :filter #'codeawareness--catalog-filter
                :noquery t))
           (codeawareness-log-info "Code Awareness: Catalog connection initiated")
-          (codeawareness-log-info "Code Awareness: Process created: %s" codeawareness--ipc-catalog-process)
           ;; Check process status immediately and after a delay
           (codeawareness--check-catalog-process-status)
           (run-with-timer 0.5 nil #'codeawareness--check-catalog-process-status))
@@ -632,10 +617,9 @@
                                 (action . "clientId")
                                 (data . ,codeawareness--guid)
                                 (caw . ,codeawareness--guid)))))
-    (codeawareness-log-info "Code Awareness: Registering client with message: %s" message)
     (when codeawareness--ipc-catalog-process
       (process-send-string codeawareness--ipc-catalog-process (concat message "\f"))
-      (codeawareness-log-info "Code Awareness: Client registration message sent")
+      (codeawareness-log-info "Code Awareness: Client registered")
       (setq codeawareness--client-registered t)
       (codeawareness--init-server))))
 
@@ -649,16 +633,11 @@
   "Initialize workspace."
   (codeawareness-log-info "Code Awareness: Workspace initialized")
   ;; Send auth:info request after a short delay to ensure connection is ready
-  (codeawareness-log-info "Code Awareness: About to send auth:info request")
   (run-with-timer 0.1 nil #'codeawareness--send-auth-info))
 
 (defun codeawareness--send-auth-info ()
   "Send auth:info request to the local service."
   (codeawareness-log-info "Code Awareness: Sending auth:info request")
-  (codeawareness-log-info "Code Awareness: IPC process status: %s" 
-                          (if codeawareness--ipc-process 
-                              (process-status codeawareness--ipc-process) 
-                            "nil"))
   (if (and codeawareness--ipc-process 
            (eq (process-status codeawareness--ipc-process) 'open))
       (codeawareness--transmit "auth:info" nil)
@@ -673,12 +652,9 @@
 (defun codeawareness--poll-for-local-service ()
   "Poll for local service socket with exponential backoff."
   (let ((socket-path (codeawareness--get-socket-path codeawareness--guid)))
-    (codeawareness-log-info "Code Awareness: Polling for local service socket (attempt %d/%d): %s" 
-                            (1+ codeawareness--poll-attempts) codeawareness--max-poll-attempts socket-path)
-    
     (if (file-exists-p socket-path)
         (progn
-          (codeawareness-log-info "Code Awareness: Local service socket found, connecting")
+          (codeawareness-log-info "Code Awareness: Local service socket found")
           (setq codeawareness--poll-attempts 0)
           (codeawareness--connect-to-local-service))
       (if (>= codeawareness--poll-attempts codeawareness--max-poll-attempts)
@@ -690,7 +666,6 @@
         (setq codeawareness--poll-attempts (1+ codeawareness--poll-attempts))
         ;; Exponential backoff: 0.5s, 1s, 2s, 4s, 8s, etc.
         (let ((delay (expt 2 (1- codeawareness--poll-attempts))))
-          (codeawareness-log-info "Code Awareness: Socket not found, retrying in %.1f seconds" delay)
           (run-with-timer delay nil #'codeawareness--poll-for-local-service))))))
 
 (defun codeawareness--connect-to-local-service ()
@@ -714,12 +689,7 @@
                  :sentinel #'codeawareness--ipc-sentinel
                  :filter #'codeawareness--ipc-filter
                  :noquery t))
-          (codeawareness-log-info "Code Awareness: Network process created: %s" codeawareness--ipc-process)
-          (codeawareness-log-info "Code Awareness: Process status after creation: %s" 
-                                  (if codeawareness--ipc-process 
-                                      (process-status codeawareness--ipc-process) 
-                                    "nil"))
-          (codeawareness-log-info "Code Awareness: Local service connection initiated")
+          (codeawareness-log-info "Code Awareness: Connected to local service")
           ;; Set up a timeout to detect stuck connections
           (run-with-timer 5.0 nil #'codeawareness--check-connection-timeout)
           ;; Set up a fallback to trigger workspace init if sentinel doesn't fire
@@ -735,21 +705,19 @@
   (when (and codeawareness--ipc-process 
              (not codeawareness--connected))
     (let ((status (process-status codeawareness--ipc-process)))
-      (codeawareness-log-warn "Code Awareness: Connection timeout check - status: %s" status)
       (if (eq status 'connect)
           (progn
-            (codeawareness-log-error "Code Awareness: Connection stuck in 'connect' state, retrying")
+            (codeawareness-log-error "Code Awareness: Connection stuck, retrying")
             (delete-process codeawareness--ipc-process)
             (setq codeawareness--ipc-process nil)
-            (run-with-timer 1.0 nil #'codeawareness--connect-to-local-service))
-        (codeawareness-log-info "Code Awareness: Connection timeout check - status is %s, not stuck" status)))))
+            (run-with-timer 1.0 nil #'codeawareness--connect-to-local-service))))))
 
 (defun codeawareness--fallback-workspace-init ()
   "Fallback workspace initialization if sentinel doesn't fire."
   (when (and codeawareness--ipc-process 
              (eq (process-status codeawareness--ipc-process) 'open)
              (not codeawareness--connected))
-    (codeawareness-log-info "Code Awareness: Fallback workspace init triggered")
+    (codeawareness-log-info "Code Awareness: Using fallback workspace init")
     (codeawareness--init-workspace)))
 
 (defun codeawareness--force-cleanup ()
@@ -807,7 +775,7 @@
   (codeawareness-log-info "Code Awareness: Force cleanup completed"))
 
 (defun codeawareness--send-disconnect-messages ()
-  "Send disconnect messages to both catalog and local service."
+  "Send disconnect messages to catalog service."
   (codeawareness-log-info "Code Awareness: Sending disconnect messages")
   
   ;; Send disconnect message to catalog
@@ -818,39 +786,24 @@
                                   (action . "clientDisconnect")
                                   (data . ,codeawareness--guid)
                                   (caw . ,codeawareness--guid)))))
-      (codeawareness-log-info "Code Awareness: Sending clientDisconnect to catalog: %s" message)
+      (codeawareness-log-info "Code Awareness: Sending clientDisconnect to catalog")
       (condition-case err
           (process-send-string codeawareness--ipc-catalog-process (concat message "\f"))
         (error
-         (codeawareness-log-error "Code Awareness: Failed to send clientDisconnect to catalog: %s" err)))))
-  
-  ;; Send disconnect message to local service
-  (when (and codeawareness--ipc-process 
-             (eq (process-status codeawareness--ipc-process) 'open))
-    (let ((message (json-encode `((flow . "req")
-                                  (domain . "*")
-                                  (action . "auth:disconnect")
-                                  (data . ,codeawareness--guid)
-                                  (caw . ,codeawareness--guid)))))
-      (codeawareness-log-info "Code Awareness: Sending auth:disconnect to local service: %s" message)
-      (condition-case err
-          (process-send-string codeawareness--ipc-process (concat message "\f"))
-        (error
-         (codeawareness-log-error "Code Awareness: Failed to send auth:disconnect to local service: %s" err))))))
+         (codeawareness-log-error "Code Awareness: Failed to send clientDisconnect to catalog: %s" err))))))
 
 (defun codeawareness--check-catalog-process-status ()
   "Check the status of the catalog process."
   (when codeawareness--ipc-catalog-process
     (let ((status (process-status codeawareness--ipc-catalog-process)))
-      (codeawareness-log-info "Code Awareness: Catalog process status: %s" status)
       (if (eq status 'open)
           (progn
-            (codeawareness-log-info "Code Awareness: Process is open and ready")
+            (codeawareness-log-info "Code Awareness: Catalog connected")
             ;; If client is not registered yet, trigger registration as fallback
             (unless codeawareness--client-registered
-              (codeawareness-log-info "Code Awareness: Client not registered, triggering registration")
+              (codeawareness-log-info "Code Awareness: Registering client")
               (codeawareness--catalog-filter codeawareness--ipc-catalog-process "connected")))
-        (codeawareness-log-error "Code Awareness: Process is not open, status: %s" status)))))
+        (codeawareness-log-error "Code Awareness: Catalog process not open, status: %s" status)))))
 
 (defun codeawareness--schedule-reconnect ()
   "Schedule a reconnection attempt."
