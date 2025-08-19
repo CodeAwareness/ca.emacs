@@ -73,6 +73,41 @@
 (defvar codeawareness--config nil
   "Configuration data.")
 
+;;; Store/State Management
+
+(defvar codeawareness--store nil
+  "Central store for Code Awareness state.")
+
+(defvar codeawareness--active-project nil
+  "Currently active project data.")
+
+(defvar codeawareness--projects nil
+  "List of all projects.")
+
+(defvar codeawareness--active-buffer nil
+  "Currently active buffer.")
+
+(defvar codeawareness--active-selections nil
+  "Currently active selections.")
+
+(defvar codeawareness--selected-peer nil
+  "Currently selected peer.")
+
+(defvar codeawareness--color-theme 1
+  "Current color theme (1=Light, 2=Dark, 3=High Contrast).")
+
+(defvar codeawareness--tmp-dir "/tmp/caw.emacs"
+  "Temporary directory for Code Awareness.")
+
+(defvar codeawareness--peer-fs (make-hash-table :test 'equal)
+  "Peer file system tree structure.")
+
+(defvar codeawareness--user nil
+  "Current user data.")
+
+(defvar codeawareness--tokens nil
+  "Authentication tokens.")
+
 ;;; Configuration
 
 (defun codeawareness--init-config ()
@@ -83,11 +118,94 @@
           (update-delay . ,codeawareness-update-delay)))
   (codeawareness-log-info "Code Awareness: Configuration initialized"))
 
+(defun codeawareness--init-store ()
+  "Initialize the central store."
+  (setq codeawareness--store
+        `((active-project . ,codeawareness--active-project)
+          (projects . ,codeawareness--projects)
+          (active-buffer . ,codeawareness--active-buffer)
+          (active-selections . ,codeawareness--active-selections)
+          (selected-peer . ,codeawareness--selected-peer)
+          (color-theme . ,codeawareness--color-theme)
+          (tmp-dir . ,codeawareness--tmp-dir)
+          (peer-fs . ,codeawareness--peer-fs)
+          (user . ,codeawareness--user)
+          (tokens . ,codeawareness--tokens)))
+  (codeawareness-log-info "Code Awareness: Store initialized"))
+
+(defun codeawareness--clear-store ()
+  "Clear the store and reset all state."
+  (codeawareness-log-info "Code Awareness: Clearing store")
+  (setq codeawareness--tokens nil
+        codeawareness--user nil
+        codeawareness--active-project nil
+        codeawareness--active-buffer nil
+        codeawareness--active-selections nil
+        codeawareness--selected-peer nil
+        codeawareness--color-theme 1
+        codeawareness--tmp-dir "/tmp/caw.emacs"
+        codeawareness--peer-fs (make-hash-table :test 'equal))
+  (codeawareness--init-store))
+
+(defun codeawareness--reset-store ()
+  "Reset store state (keep user/tokens)."
+  (codeawareness-log-info "Code Awareness: Resetting store")
+  (setq codeawareness--peer-fs (make-hash-table :test 'equal)
+        codeawareness--active-buffer nil
+        codeawareness--active-selections nil)
+  (codeawareness--init-store))
+
+;;; Project Management
+
+(defun codeawareness--add-project (project)
+  "Add a project to the store."
+  (codeawareness-log-info "Code Awareness: Adding project %s" (alist-get 'root project))
+  (setq codeawareness--active-project project)
+  ;; Add to projects list if not already present
+  (unless (cl-find (alist-get 'root project) codeawareness--projects 
+                   :key (lambda (p) (alist-get 'root p)) :test 'string=)
+    (push project codeawareness--projects))
+  (codeawareness--init-store)
+  project)
+
+(defun codeawareness--get-active-file-path ()
+  "Get the path of the currently active file."
+  (when (and codeawareness--active-buffer
+             (buffer-live-p codeawareness--active-buffer))
+    (buffer-file-name codeawareness--active-buffer)))
+
+(defun codeawareness--get-active-file-content ()
+  "Get the content of the currently active file."
+  (when (and codeawareness--active-buffer
+             (buffer-live-p codeawareness--active-buffer))
+    (with-current-buffer codeawareness--active-buffer
+      (buffer-string))))
+
+(defun codeawareness--cross-platform-path (path)
+  "Convert path to cross-platform format (forward slashes)."
+  (when path
+    (replace-regexp-in-string "\\\\" "/" path)))
+
+;;; Workspace Management
+
+(defun codeawareness--refresh-active-file ()
+  "Refresh the currently active file by sending repo:active-path message."
+  (let ((fpath (codeawareness--get-active-file-path))
+        (doc (codeawareness--get-active-file-content)))
+    (if (not fpath)
+        (codeawareness-log-info "Code Awareness: No active file to refresh")
+      (codeawareness-log-info "Code Awareness: Refreshing active file %s" fpath)
+      (let ((message-data `((fpath . ,(codeawareness--cross-platform-path fpath))
+                            (doc . ,doc)
+                            (caw . ,codeawareness--guid))))
+        (codeawareness--transmit "repo:active-path" message-data)
+        (codeawareness--setup-response-handler "code" "repo:active-path")))))
+
 ;;; IPC Communication
 
 (defun codeawareness--generate-guid ()
   "Generate a unique GUID for this Emacs instance."
-  (concat (number-to-string (car (current-time))) "-" (number-to-string (random 1000000))))
+  (concat (number-to-string (emacs-pid)) "-" (number-to-string (random 1000000))))
 
 (defun codeawareness--get-socket-path (guid)
   "Get the socket path for the given GUID."
@@ -116,12 +234,24 @@
 (defun codeawareness--ipc-sentinel (process event)
   "Handle IPC process sentinel events."
   (codeawareness-log-info "Code Awareness IPC: %s" event)
-  (when (string-match "failed\\|exited" event)
+  (cond
+   ((string-match "failed" event)
+    (codeawareness-log-error "Code Awareness: Local service connection failed")
     (setq codeawareness--connected nil)
-    (codeawareness--schedule-reconnect)))
+    ;; Retry connection
+    (run-with-timer 2.0 nil #'codeawareness--connect-to-local-service))
+   ((string-match "exited" event)
+    (codeawareness-log-warn "Code Awareness: Local service connection closed")
+    (setq codeawareness--connected nil))
+   ((string-match "open" event)
+    (codeawareness-log-info "Code Awareness: Successfully connected to local service")
+    (setq codeawareness--connected t)
+    ;; Send auth:info once connected
+    (codeawareness--transmit "auth:info" nil))))
 
 (defun codeawareness--ipc-filter (process data)
   "Handle IPC process data."
+  (codeawareness-log-info "Code Awareness: Received raw data from IPC: %s" data)
   (let ((buffer (process-buffer process)))
     (when buffer
       (with-current-buffer buffer
@@ -143,13 +273,17 @@
 
 (defun codeawareness--handle-ipc-message (message)
   "Handle a single IPC message."
+  (codeawareness-log-info "Code Awareness: Received IPC message: %s" message)
   (condition-case err
       (let* ((data (json-read-from-string message))
              (flow (alist-get 'flow data))
              (domain (alist-get 'domain data))
              (action (alist-get 'action data))
              (response-data (alist-get 'data data))
-             (error-data (alist-get 'err data)))
+             (error-data (alist-get 'err data))
+             (caw (alist-get 'caw data)))
+        (codeawareness-log-info "Code Awareness: Parsed message - flow: %s, domain: %s, action: %s, caw: %s" 
+                                flow domain action caw)
         (if (and (string= flow "res") action)
             (codeawareness--handle-response domain action response-data)
           (if (and (string= flow "err") action)
@@ -165,6 +299,15 @@
     (when handler
       (remhash key codeawareness--response-handlers)
       (funcall handler data))))
+
+(defun codeawareness--handle-repo-active-path-response (data)
+  "Handle response from repo:active-path request."
+  (codeawareness-log-info "Code Awareness: Received repo:active-path response")
+  (codeawareness-log-info "Code Awareness: Project data: %s" data)
+  ;; Add the project to our store
+  (codeawareness--add-project data)
+  ;; TODO: Update decorations (will implement in Phase 3)
+  (codeawareness-log-info "Code Awareness: Project added successfully"))
 
 (defun codeawareness--handle-error (domain action error-data)
   "Handle an IPC error."
@@ -183,15 +326,30 @@
                                 (action . ,action)
                                 (data . ,data)
                                 (caw . ,codeawareness--guid)))))
-    (when codeawareness--ipc-process
-      (process-send-string codeawareness--ipc-process (concat message "\f"))
-      (codeawareness--setup-response-handler domain action))))
+    ;; Log data in a truncated format to avoid huge log output
+    (let ((data-summary (if (and data (alist-get 'doc data))
+                            (format "((fpath . %s) (doc . [%d chars]))" 
+                                    (alist-get 'fpath data) 
+                                    (length (alist-get 'doc data)))
+                          (format "%s" data))))
+      (codeawareness-log-info "Code Awareness: Transmitting %s:%s with data: %s" domain action data-summary))
+    (if codeawareness--ipc-process
+        (progn
+          (codeawareness-log-info "Code Awareness: Sending message: %s" message)
+          (process-send-string codeawareness--ipc-process (concat message "\f"))
+          (codeawareness--setup-response-handler domain action))
+      (codeawareness-log-error "Code Awareness: No IPC process available for transmission"))))
 
 (defun codeawareness--setup-response-handler (domain action)
   "Setup response handlers for the given domain and action."
   (let ((res-key (format "res:%s:%s" domain action))
         (err-key (format "err:%s:%s" domain action)))
-    (puthash res-key #'codeawareness--handle-success codeawareness--response-handlers)
+    ;; Set up specific handlers for known actions
+    (cond
+     ((string= (format "%s:%s" domain action) "code:repo:active-path")
+      (puthash res-key #'codeawareness--handle-repo-active-path-response codeawareness--response-handlers))
+     (t
+      (puthash res-key #'codeawareness--handle-success codeawareness--response-handlers)))
     (puthash err-key #'codeawareness--handle-failure codeawareness--response-handlers)))
 
 (defun codeawareness--handle-success (data)
@@ -286,12 +444,39 @@
 
 (defun codeawareness--init-server ()
   "Initialize the server connection."
-  (codeawareness--transmit "auth:info" nil)
+  (codeawareness--connect-to-local-service)
   (codeawareness--init-workspace))
 
 (defun codeawareness--init-workspace ()
   "Initialize workspace."
   (codeawareness-log-info "Code Awareness: Workspace initialized"))
+
+(defun codeawareness--connect-to-local-service ()
+  "Connect to the local service with retry logic."
+  (let* ((socket-path (codeawareness--get-socket-path codeawareness--guid))
+         (process-name (format "codeawareness-ipc-%s" codeawareness--guid))
+         (buffer-name (format "*%s*" process-name)))
+    (codeawareness-log-info "Code Awareness: Current GUID: %s" codeawareness--guid)
+    (codeawareness-log-info "Code Awareness: Attempting to connect to local service at %s" socket-path)
+    (codeawareness-log-info "Code Awareness: Socket exists: %s" (file-exists-p socket-path))
+    
+    (condition-case err
+        (progn
+          (setq codeawareness--ipc-process
+                (make-network-process
+                 :name process-name
+                 :buffer buffer-name
+                 :family 'local
+                 :service socket-path
+                 :sentinel #'codeawareness--ipc-sentinel
+                 :filter #'codeawareness--ipc-filter
+                 :noquery t))
+          (codeawareness-log-info "Code Awareness: Local service connection initiated"))
+      (error
+       (codeawareness-log-warn "Code Awareness: Failed to connect to local service, will retry in 2 seconds")
+       (codeawareness-log-warn "Code Awareness: Error: %s" err)
+       ;; Schedule retry
+       (run-with-timer 2.0 nil #'codeawareness--connect-to-local-service)))))
 
 (defun codeawareness--force-cleanup ()
   "Force cleanup of all Code Awareness processes and state."
@@ -445,7 +630,7 @@
 (defun codeawareness-refresh ()
   "Refresh Code Awareness data."
   (interactive)
-  (codeawareness--update))
+  (codeawareness--refresh-active-file))
 
 (defun codeawareness-disconnect ()
   "Manually disconnect from Code Awareness services."
@@ -519,6 +704,7 @@ Enable Code Awareness functionality for collaborative development."
 (defun codeawareness--enable ()
   "Enable Code Awareness."
   (codeawareness--init-config)
+  (codeawareness--init-store)
   (codeawareness--init-ipc)
   (add-hook 'after-save-hook #'codeawareness--after-save-hook)
   (add-hook 'post-command-hook #'codeawareness--post-command-hook)
@@ -533,6 +719,9 @@ Enable Code Awareness functionality for collaborative development."
   
   ;; Use force cleanup to ensure all processes are properly deleted
   (codeawareness--force-cleanup)
+  
+  ;; Clear the store
+  (codeawareness--clear-store)
   
   (codeawareness-log-info "Code Awareness disabled"))
 
