@@ -720,7 +720,7 @@
                                     "nil"))
           (codeawareness-log-info "Code Awareness: Local service connection initiated")
           ;; Set up a timeout to detect stuck connections
-          (run-with-timer 5.0 nil #'codeawareness--check-connection-timeout)))
+          (run-with-timer 5.0 nil #'codeawareness--check-connection-timeout))
       (error
        (codeawareness-log-warn "Code Awareness: Failed to connect to local service, will retry in 2 seconds")
        (codeawareness-log-warn "Code Awareness: Error: %s" err)
@@ -739,7 +739,7 @@
             (delete-process codeawareness--ipc-process)
             (setq codeawareness--ipc-process nil)
             (run-with-timer 1.0 nil #'codeawareness--connect-to-local-service))
-        (codeawareness-log-info "Code Awareness: Connection timeout check - status is %s, not stuck" status))))))
+        (codeawareness-log-info "Code Awareness: Connection timeout check - status is %s, not stuck" status)))))
 
 (defun codeawareness--force-cleanup ()
   "Force cleanup of all Code Awareness processes and state."
