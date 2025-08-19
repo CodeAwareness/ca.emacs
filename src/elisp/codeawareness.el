@@ -403,6 +403,7 @@
   (codeawareness-log-info "Code Awareness IPC: Process: %s" process)
   (codeawareness-log-info "Code Awareness IPC: Process status: %s" 
                           (if process (process-status process) "nil"))
+  (codeawareness-log-info "Code Awareness IPC: Expected process: %s" codeawareness--ipc-process)
   (cond
    ((string-match "failed" event)
     (codeawareness-log-error "Code Awareness: Local service connection failed")
@@ -720,7 +721,9 @@
                                     "nil"))
           (codeawareness-log-info "Code Awareness: Local service connection initiated")
           ;; Set up a timeout to detect stuck connections
-          (run-with-timer 5.0 nil #'codeawareness--check-connection-timeout))
+          (run-with-timer 5.0 nil #'codeawareness--check-connection-timeout)
+          ;; Set up a fallback to trigger workspace init if sentinel doesn't fire
+          (run-with-timer 1.0 nil #'codeawareness--fallback-workspace-init))
       (error
        (codeawareness-log-warn "Code Awareness: Failed to connect to local service, will retry in 2 seconds")
        (codeawareness-log-warn "Code Awareness: Error: %s" err)
@@ -740,6 +743,14 @@
             (setq codeawareness--ipc-process nil)
             (run-with-timer 1.0 nil #'codeawareness--connect-to-local-service))
         (codeawareness-log-info "Code Awareness: Connection timeout check - status is %s, not stuck" status)))))
+
+(defun codeawareness--fallback-workspace-init ()
+  "Fallback workspace initialization if sentinel doesn't fire."
+  (when (and codeawareness--ipc-process 
+             (eq (process-status codeawareness--ipc-process) 'open)
+             (not codeawareness--connected))
+    (codeawareness-log-info "Code Awareness: Fallback workspace init triggered")
+    (codeawareness--init-workspace)))
 
 (defun codeawareness--force-cleanup ()
   "Force cleanup of all Code Awareness processes and state."
@@ -967,6 +978,18 @@
   (run-with-timer 0.5 nil #'codeawareness--connect-to-local-service)
   (message "Code Awareness: Connection retry initiated"))
 
+(defun codeawareness-manual-auth ()
+  "Manually trigger authentication."
+  (interactive)
+  (codeawareness-log-info "Code Awareness: Manual auth trigger requested")
+  (if (and codeawareness--ipc-process 
+           (eq (process-status codeawareness--ipc-process) 'open))
+      (progn
+        (codeawareness-log-info "Code Awareness: IPC process is open, triggering workspace init")
+        (codeawareness--init-workspace)
+        (message "Code Awareness: Manual auth triggered"))
+    (message "Code Awareness: IPC process not ready for auth")))
+
 (defun codeawareness-disconnect ()
   "Manually disconnect from Code Awareness services."
   (interactive)
@@ -1083,6 +1106,7 @@ Enable Code Awareness functionality for collaborative development."
     (define-key map (kbd "C-c C-a c") #'codeawareness-connection-status)
     (define-key map (kbd "C-c C-a D") #'codeawareness-debug-connection)
     (define-key map (kbd "C-c C-a y") #'codeawareness-retry-connection)
+    (define-key map (kbd "C-c C-a a") #'codeawareness-manual-auth)
     map)
   "Keymap for Code Awareness mode.")
 
