@@ -204,20 +204,36 @@
 
 ;;; Workspace Management
 
+;; The refreshActiveFile hook implementation follows the VSCode pattern:
+;; 1. Called immediately after authentication is successful (like VSCode's init function)
+;; 2. Called whenever the active buffer changes (like VSCode's onDidChangeActiveTextEditor)
+;; 3. Sends a repo:active-path message to the local service with the current file path and content
+;; 4. Updates highlights and project data based on the response
+
 (defun codeawareness--refresh-active-file ()
   "Refresh the currently active file by sending repo:active-path message."
-  (if (not codeawareness--authenticated)
-      (codeawareness-log-warn "Code Awareness: Not authenticated, skipping file refresh")
-    (let ((fpath (codeawareness--get-active-file-path))
-          (doc (codeawareness--get-active-file-content)))
-      (if (not fpath)
-          (codeawareness-log-info "Code Awareness: No active file to refresh")
-        (codeawareness-log-info "Code Awareness: Refreshing active file %s" fpath)
-        (let ((message-data `((fpath . ,(codeawareness--cross-platform-path fpath))
-                              (doc . ,doc)
-                              (caw . ,codeawareness--guid))))
-          (codeawareness--transmit "repo:active-path" message-data)
-          (codeawareness--setup-response-handler "code" "repo:active-path"))))))
+  (codeawareness-log-info "Code Awareness: refreshActiveFile hook called")
+  (codeawareness-log-info "Code Awareness: Authentication status: %s" (if codeawareness--authenticated "yes" "no"))
+  (codeawareness-log-info "Code Awareness: IPC process exists: %s" (if codeawareness--ipc-process "yes" "no"))
+  (when codeawareness--ipc-process
+    (codeawareness-log-info "Code Awareness: IPC process status: %s" (process-status codeawareness--ipc-process)))
+  
+  ;; Check if we have the necessary components to send a refresh request
+  (let ((fpath (codeawareness--get-active-file-path))
+        (doc (codeawareness--get-active-file-content)))
+    (if (not fpath)
+        (codeawareness-log-info "Code Awareness: No active file to refresh")
+      (if (not codeawareness--authenticated)
+          (codeawareness-log-warn "Code Awareness: Not authenticated, skipping file refresh")
+        (if (not (and codeawareness--ipc-process 
+                      (eq (process-status codeawareness--ipc-process) 'open)))
+            (codeawareness-log-warn "Code Awareness: IPC process not ready, skipping file refresh")
+          (codeawareness-log-info "Code Awareness: Refreshing active file %s" fpath)
+          (let ((message-data `((fpath . ,(codeawareness--cross-platform-path fpath))
+                                (doc . ,doc)
+                                (caw . ,codeawareness--guid))))
+            (codeawareness--transmit "repo:active-path" message-data)
+            (codeawareness--setup-response-handler "code" "repo:active-path")))))))
 
 ;;; Highlighting System
 
@@ -424,7 +440,7 @@
 
 (defun codeawareness--ipc-filter (process data)
   "Handle IPC process data."
-  (codeawareness-log-info "Code Awareness: Received IPC data: %s" data)
+  ;;(codeawareness-log-info "Code Awareness: Received IPC data: %s" data)
   (let ((buffer (process-buffer process)))
     (when buffer
       (with-current-buffer buffer
@@ -455,11 +471,16 @@
              (error-data (alist-get 'err data))
              (caw (alist-get 'caw data)))
         (codeawareness-log-info "Code Awareness: %s:%s" domain action)
+        ;; (codeawareness-log-info "Code Awareness: Raw message: %S" message)
+        ;; (codeawareness-log-info "Code Awareness: Parsed data: %S" data)
+        ;; (codeawareness-log-info "Code Awareness: Response data: %S" response-data)
         (if (and (string= flow "res") action)
             (codeawareness--handle-response domain action response-data)
           (if (and (string= flow "err") action)
               (codeawareness--handle-error domain action error-data)
-            (codeawareness-log-warn "Code Awareness: Unknown message format: %s" message))))
+          (if (and (string= flow "req") action)
+              (codeawareness-log-info "Code Awareness: Received request (not handling): %s:%s" domain action)
+            (codeawareness-log-warn "Code Awareness: Unknown message format: %s" message)))))
     (error
      (codeawareness-log-error "Code Awareness: Error parsing IPC message: %s" err))))
 
@@ -467,9 +488,13 @@
   "Handle an IPC response."
   (let* ((key (format "res:%s:%s" domain action))
          (handler (gethash key codeawareness--response-handlers)))
-    (when handler
-      (remhash key codeawareness--response-handlers)
-      (funcall handler data))))
+    ;; Handle auth responses automatically (they may come from external sources)
+    (if (and (string= domain "*") (or (string= action "auth:info") (string= action "auth:login")))
+        (codeawareness--handle-auth-info-response data)
+      ;; Handle other responses with registered handlers
+      (when handler
+        (remhash key codeawareness--response-handlers)
+        (funcall handler data)))))
 
 (defun codeawareness--handle-repo-active-path-response (data)
   "Handle response from repo:active-path request."
@@ -486,15 +511,17 @@
 
 (defun codeawareness--handle-auth-info-response (data)
   "Handle response from auth:info request."
-  (codeawareness-log-info "Code Awareness: Received auth:info response")
-  (codeawareness-log-info "Code Awareness: Auth data: %s" data)
-  (if (and data (not (string= data "")) (listp data))
+  ;;(codeawareness-log-info "Code Awareness: Received auth:info response")
+  ;; (codeawareness-log-info "Code Awareness: Auth data: %S" data)
+  (if (and data (listp data) (alist-get 'user data))
       (progn
         (setq codeawareness--user (alist-get 'user data))
         (setq codeawareness--tokens (alist-get 'tokens data))
         (setq codeawareness--authenticated t)
         (codeawareness-log-info "Code Awareness: Authentication successful")
-        (message "Code Awareness: Authenticated as %s" (alist-get 'name codeawareness--user)))
+        (message "Code Awareness: Authenticated as %s" (alist-get 'name codeawareness--user))
+        ;; Refresh active file immediately after authentication (like VSCode's init function)
+        (codeawareness--refresh-active-file))
     (setq codeawareness--authenticated nil)
     (codeawareness-log-warn "Code Awareness: No authentication data received - user needs to authenticate")))
 
@@ -516,10 +543,13 @@
                                 (data . ,data)
                                 (caw . ,codeawareness--guid)))))
     (if codeawareness--ipc-process
-        (progn
-          (codeawareness-log-info "Code Awareness: Sending %s:%s" domain action)
-          (process-send-string codeawareness--ipc-process (concat message "\f"))
-          (codeawareness--setup-response-handler domain action))
+        (if (eq (process-status codeawareness--ipc-process) 'open)
+            (progn
+              (codeawareness-log-info "Code Awareness: Sending %s:%s" domain action)
+              (process-send-string codeawareness--ipc-process (concat message "\f"))
+              (codeawareness--setup-response-handler domain action))
+          (codeawareness-log-error "Code Awareness: IPC process exists but is not open (status: %s)" 
+                                  (process-status codeawareness--ipc-process)))
       (codeawareness-log-error "Code Awareness: No IPC process available for transmission"))))
 
 (defun codeawareness--setup-response-handler (domain action)
@@ -530,7 +560,8 @@
     (cond
      ((string= (format "%s:%s" domain action) "code:repo:active-path")
       (puthash res-key #'codeawareness--handle-repo-active-path-response codeawareness--response-handlers))
-     ((string= (format "%s:%s" domain action) "*:auth:info")
+     ((or (string= (format "%s:%s" domain action) "*:auth:info")
+          (string= (format "%s:%s" domain action) "*:auth:login"))
       (puthash res-key #'codeawareness--handle-auth-info-response codeawareness--response-handlers))
      (t
       (puthash res-key #'codeawareness--handle-success codeawareness--response-handlers)))
@@ -849,11 +880,16 @@
   "Hook function for post-command-hook."
   (let ((current-buffer (current-buffer)))
     (when (and current-buffer
-               (not (eq current-buffer codeawareness--active-buffer))
-               (buffer-file-name current-buffer))
-      ;; Set the active buffer and refresh immediately (like VS Code's onDidChangeActiveTextEditor)
-      (setq codeawareness--active-buffer current-buffer)
-      (codeawareness--refresh-active-file))))
+               (not (eq current-buffer codeawareness--active-buffer)))
+      (if (buffer-file-name current-buffer)
+          ;; Set the active buffer and refresh immediately (like VS Code's onDidChangeActiveTextEditor)
+          (progn
+            (codeawareness-log-info "Code Awareness: Active buffer changed to %s" (buffer-file-name current-buffer))
+            (setq codeawareness--active-buffer current-buffer)
+            (codeawareness--refresh-active-file))
+        ;; Clear active buffer if switching to a buffer without a file
+        (codeawareness-log-info "Code Awareness: Switched to buffer without file, clearing active buffer")
+        (setq codeawareness--active-buffer nil)))))
 
 ;;; Public API
 
@@ -997,7 +1033,47 @@
     (error
      (message "Manual connection test: FAILED - %s" err)))
   
+  ;; Test refreshActiveFile functionality
+  (message "Testing refreshActiveFile functionality...")
+  (message "Current active buffer: %s" codeawareness--active-buffer)
+  (message "Current buffer file: %s" (buffer-file-name (current-buffer)))
+  (message "Authenticated: %s" (if codeawareness--authenticated "yes" "no"))
+  
+  ;; Test manual refresh
+  (codeawareness--refresh-active-file)
+  
   (message "Basic tests completed"))
+
+(defun codeawareness-test-buffer-switching ()
+  "Test buffer switching functionality."
+  (interactive)
+  (message "Testing buffer switching functionality...")
+  
+  ;; Test current state
+  (message "Current buffer: %s" (current-buffer))
+  (message "Current buffer file: %s" (buffer-file-name (current-buffer)))
+  (message "Active buffer: %s" codeawareness--active-buffer)
+  (message "Active buffer file: %s" (when codeawareness--active-buffer 
+                                      (buffer-file-name codeawareness--active-buffer)))
+  
+  ;; Test post-command-hook logic manually
+  (let ((current-buffer (current-buffer)))
+    (message "Testing post-command-hook logic...")
+    (message "Current buffer: %s" current-buffer)
+    (message "Active buffer: %s" codeawareness--active-buffer)
+    (message "Buffers equal: %s" (eq current-buffer codeawareness--active-buffer))
+    (message "Has file: %s" (if (buffer-file-name current-buffer) "yes" "no"))
+    
+    (when (and current-buffer
+               (not (eq current-buffer codeawareness--active-buffer)))
+      (if (buffer-file-name current-buffer)
+          (progn
+            (message "Would set active buffer and refresh")
+            (setq codeawareness--active-buffer current-buffer)
+            (codeawareness--refresh-active-file))
+        (message "Would clear active buffer"))))
+  
+  (message "Buffer switching test completed"))
 
 ;;; Minor Mode
 
@@ -1020,6 +1096,9 @@ Enable Code Awareness functionality for collaborative development."
   (codeawareness--init-highlight-faces)
   (add-hook 'after-save-hook #'codeawareness--after-save-hook)
   (add-hook 'post-command-hook #'codeawareness--post-command-hook)
+  ;; Set the current buffer as active if it has a file (like VSCode's activeTextEditor)
+  (when (and (current-buffer) (buffer-file-name (current-buffer)))
+    (setq codeawareness--active-buffer (current-buffer)))
   (codeawareness-log-info "Code Awareness enabled"))
 
 (defun codeawareness--disable ()
@@ -1060,6 +1139,10 @@ Enable Code Awareness functionality for collaborative development."
     (define-key map (kbd "C-c C-a D") #'codeawareness-debug-connection)
     (define-key map (kbd "C-c C-a y") #'codeawareness-retry-connection)
     (define-key map (kbd "C-c C-a a") #'codeawareness-manual-auth)
+    ;; Testing refreshActiveFile
+    (define-key map (kbd "C-c C-a f") #'codeawareness--refresh-active-file)
+    ;; Testing buffer switching
+    (define-key map (kbd "C-c C-a b") #'codeawareness-test-buffer-switching)
     map)
   "Keymap for Code Awareness mode.")
 
