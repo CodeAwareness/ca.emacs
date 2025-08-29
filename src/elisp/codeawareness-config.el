@@ -52,6 +52,26 @@
   :type 'boolean
   :group 'codeawareness-config)
 
+(defcustom codeawareness-highlight-intensity 0.3
+  "Intensity of highlighting (0.0 to 1.0)."
+  :type 'number
+  :group 'codeawareness-config)
+
+(defcustom codeawareness-highlight-refresh-delay 0.5
+  "Delay in seconds before refreshing highlights after changes."
+  :type 'number
+  :group 'codeawareness-config)
+
+(defcustom codeawareness-highlight-persistent nil
+  "Whether highlights should persist across buffer switches."
+  :type 'boolean
+  :group 'codeawareness-config)
+
+(defcustom codeawareness-full-width-highlights t
+  "Whether to use full-width highlights that extend to the end of the line."
+  :type 'boolean
+  :group 'codeawareness-config)
+
 (defcustom codeawareness-update-delay 0.5
   "Delay in seconds before running a Code Awareness update."
   :type 'number

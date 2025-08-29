@@ -78,14 +78,8 @@
 (defvar codeawareness--store nil
   "Central store for Code Awareness state.")
 
-(defvar codeawareness--active-project nil
-  "Currently active project data.")
-
 (defvar codeawareness--projects nil
   "List of all projects.")
-
-(defvar codeawareness--active-buffer nil
-  "Currently active buffer.")
 
 (defvar codeawareness--active-selections nil
   "Currently active selections.")
@@ -251,29 +245,60 @@
         (peer-face (alist-get 'peer codeawareness--highlight-faces))
         (modified-face (alist-get 'modified codeawareness--highlight-faces)))
     
-    ;; Conflict highlights (red background)
-    (set-face-attribute conflict-face nil
-                        :background "#ffcccc"
-                        :foreground "#cc0000"
-                        :weight 'bold)
-    
-    ;; Overlap highlights (yellow background)
-    (set-face-attribute overlap-face nil
-                        :background "#ffffcc"
-                        :foreground "#cc6600"
-                        :weight 'normal)
-    
-    ;; Peer highlights (blue background)
-    (set-face-attribute peer-face nil
-                        :background "#cce5ff"
-                        :foreground "#0066cc"
-                        :weight 'normal)
-    
-    ;; Modified highlights (green background)
-    (set-face-attribute modified-face nil
-                        :background "#ccffcc"
-                        :foreground "#006600"
-                        :weight 'normal))
+    ;; Detect if we're in a dark theme
+    (let ((is-dark-theme (eq (frame-parameter nil 'background-mode) 'dark)))
+      (if is-dark-theme
+          ;; Dark theme colors
+          (progn
+            ;; Conflict highlights (red background for dark theme)
+            (set-face-attribute conflict-face nil
+                                :background "#4a1a1a"
+                                :foreground "#ff6b6b"
+                                :weight 'bold)
+            
+            ;; Overlap highlights (yellow/orange background for dark theme)
+            (set-face-attribute overlap-face nil
+                                :background "#4a3a1a"
+                                :foreground "#ffd93d"
+                                :weight 'normal)
+            
+            ;; Peer highlights (blue background for dark theme)
+            (set-face-attribute peer-face nil
+                                :background "#1a2a4a"
+                                :foreground "#74c0fc"
+                                :weight 'normal)
+            
+            ;; Modified highlights (green background for dark theme)
+            (set-face-attribute modified-face nil
+                                :background "#1a4a1a"
+                                :foreground "#69db7c"
+                                :weight 'normal))
+        
+        ;; Light theme colors
+        (progn
+          ;; Conflict highlights (red background for light theme)
+          (set-face-attribute conflict-face nil
+                              :background "#ffebee"
+                              :foreground "#c62828"
+                              :weight 'bold)
+          
+          ;; Overlap highlights (yellow background for light theme)
+          (set-face-attribute overlap-face nil
+                              :background "#fff8e1"
+                              :foreground "#f57f17"
+                              :weight 'normal)
+          
+          ;; Peer highlights (blue background for light theme)
+          (set-face-attribute peer-face nil
+                              :background "#e3f2fd"
+                              :foreground "#1565c0"
+                              :weight 'normal)
+          
+          ;; Modified highlights (green background for light theme)
+          (set-face-attribute modified-face nil
+                              :background "#e8f5e8"
+                              :foreground "#2e7d32"
+                              :weight 'normal)))))
   
   (codeawareness-log-info "Code Awareness: Highlight faces initialized"))
 
@@ -293,6 +318,26 @@
             (overlay-put overlay 'face face)
             (overlay-put overlay 'codeawareness-type 'line-highlight)
             (overlay-put overlay 'codeawareness-line line-number)
+            ;; Add any additional properties
+            (when properties
+              (dolist (prop properties)
+                (overlay-put overlay (car prop) (cdr prop))))
+            overlay))))))
+
+(defun codeawareness--create-full-width-overlay (buffer line-number face &optional properties)
+  "Create a full-width overlay for a specific line in the given buffer.
+This extends the highlight to the full width of the window."
+  (when (and buffer (buffer-live-p buffer))
+    (with-current-buffer buffer
+      (let* ((line-count (line-number-at-pos (point-max)))
+             (start (line-beginning-position line-number))
+             (end (line-end-position line-number)))
+        (when (and (<= line-number line-count) (>= line-number 1))
+          (let ((overlay (make-overlay start end buffer t nil)))
+            (overlay-put overlay 'face face)
+            (overlay-put overlay 'codeawareness-type 'line-highlight)
+            (overlay-put overlay 'codeawareness-line line-number)
+            (overlay-put overlay 'evaporate t)
             ;; Add any additional properties
             (when properties
               (dolist (prop properties)
@@ -321,7 +366,9 @@
   "Add a highlight to the specified line in the given buffer."
   (when (and buffer line-number type)
     (let* ((face (codeawareness--get-highlight-face type))
-           (overlay (codeawareness--create-line-overlay buffer line-number face properties)))
+           (overlay (if codeawareness-full-width-highlights
+                        (codeawareness--create-full-width-overlay buffer line-number face properties)
+                      (codeawareness--create-line-overlay buffer line-number face properties))))
       (when overlay
         ;; Store highlight information
         (let ((buffer-highlights (gethash buffer codeawareness--highlights)))
@@ -329,8 +376,6 @@
             (setq buffer-highlights (make-hash-table :test 'equal))
             (puthash buffer buffer-highlights codeawareness--highlights))
           (puthash line-number overlay buffer-highlights))
-        (codeawareness-log-info "Code Awareness: Added %s highlight to line %d in buffer %s" 
-                                type line-number buffer)
         overlay))))
 
 (defun codeawareness--remove-highlight (buffer line-number)
@@ -363,12 +408,12 @@
   (when codeawareness--highlight-timer
     (cancel-timer codeawareness--highlight-timer))
   (setq codeawareness--highlight-timer
-        (run-with-timer 0.5 nil #'codeawareness--refresh-buffer-highlights buffer)))
+        (run-with-timer codeawareness-highlight-refresh-delay nil 
+                        #'codeawareness--refresh-buffer-highlights buffer)))
 
 (defun codeawareness--apply-highlights-from-data (buffer highlight-data)
   "Apply highlights to buffer based on data from the local service."
   (when (and buffer (buffer-live-p buffer) highlight-data)
-    (codeawareness-log-info "Code Awareness: Applying highlights to buffer %s" buffer)
     ;; Clear existing highlights first
     (codeawareness--clear-buffer-highlights buffer)
     
@@ -378,10 +423,49 @@
             (type (alist-get 'type highlight))
             (properties (alist-get 'properties highlight)))
         (when (and line type)
-          (codeawareness--add-highlight buffer line type properties))))
-    
-    (codeawareness-log-info "Code Awareness: Applied %d highlights to buffer %s" 
-                            (length highlight-data) buffer)))
+          (codeawareness--add-highlight buffer line type properties))))))
+
+(defun codeawareness--convert-agg-to-highlights (agg-data)
+  "Convert agg data structure to highlight format.
+AGG-DATA should be an alist where values are arrays of line numbers.
+Returns a list of highlight alists with 'line and 'type keys."
+  (let ((highlights '()))
+    (dolist (entry agg-data highlights)
+      (let ((sha (car entry))
+            (line-numbers (cdr entry)))
+        ;; Handle both lists and vectors (JSON arrays are parsed as vectors)
+        (when (and (or (listp line-numbers) (vectorp line-numbers)) 
+                   (> (length line-numbers) 0))
+          (dolist (line-number (if (vectorp line-numbers) 
+                                   (append line-numbers nil) 
+                                 line-numbers))
+            (when (numberp line-number)
+              ;; Convert 0-based line numbers to 1-based (Emacs convention)
+              (let ((emacs-line (1+ line-number)))
+                (push `((line . ,emacs-line)
+                        (type . modified)
+                        (properties . ((sha . ,sha))))
+                      highlights)))))))))
+
+(defun codeawareness--convert-hl-to-highlights (hl-data)
+  "Convert hl data structure to highlight format.
+HL-DATA should be an array of line numbers.
+Returns a list of highlight alists with 'line and 'type keys."
+  (let ((highlights '()))
+    ;; Handle both lists and vectors (JSON arrays are parsed as vectors)
+    (when (and (or (listp hl-data) (vectorp hl-data)) 
+               (> (length hl-data) 0))
+      (dolist (line-number (if (vectorp hl-data) 
+                               (append hl-data nil) 
+                             hl-data))
+        (when (numberp line-number)
+          ;; Convert 0-based line numbers to 1-based (Emacs convention)
+          (let ((emacs-line (1+ line-number)))
+            (push `((line . ,emacs-line)
+                    (type . modified)
+                    (properties . ((source . hl))))
+                  highlights)))))
+    highlights))
 
 ;;; IPC Communication
 
@@ -499,15 +583,17 @@
 (defun codeawareness--handle-repo-active-path-response (data)
   "Handle response from repo:active-path request."
   (codeawareness-log-info "Code Awareness: Received repo:active-path response")
-  (codeawareness-log-info "Code Awareness: Project data: %s" data)
   ;; Add the project to our store
   (codeawareness--add-project data)
-  ;; Apply highlights if available in the response
-  (let ((highlights (alist-get 'highlights data))
-        (buffer codeawareness--active-buffer))
-    (when (and highlights buffer (buffer-live-p buffer))
-      (codeawareness--apply-highlights-from-data buffer highlights)))
-  (codeawareness-log-info "Code Awareness: Project added successfully"))
+  ;; Extract and apply highlights from the hl data structure
+  (let* ((hl-data (alist-get 'hl data))
+         (buffer codeawareness--active-buffer))
+    (when (and hl-data buffer (buffer-live-p buffer))
+      ;; Convert hl data to highlight format
+      (let ((highlights (codeawareness--convert-hl-to-highlights hl-data)))
+        (when highlights
+          (codeawareness--apply-highlights-from-data buffer highlights))))
+  (codeawareness-log-info "Code Awareness: Project added successfully")))
 
 (defun codeawareness--handle-auth-info-response (data)
   "Handle response from auth:info request."
@@ -881,6 +967,13 @@
   (let ((current-buffer (current-buffer)))
     (when (and current-buffer
                (not (eq current-buffer codeawareness--active-buffer)))
+      ;; Clear highlights from the previous active buffer
+      (when (and codeawareness--active-buffer 
+                 (buffer-live-p codeawareness--active-buffer))
+        (codeawareness-log-info "Code Awareness: Clearing highlights from previous buffer %s" 
+                                (buffer-name codeawareness--active-buffer))
+        (codeawareness--clear-buffer-highlights codeawareness--active-buffer))
+      
       (if (buffer-file-name current-buffer)
           ;; Set the active buffer and refresh immediately (like VS Code's onDidChangeActiveTextEditor)
           (progn
@@ -986,94 +1079,28 @@
   (codeawareness--send-disconnect-messages)
   (message "Code Awareness: Disconnect messages sent"))
 
-(defun codeawareness-test ()
-  "Run basic Code Awareness tests."
-  (interactive)
-  (message "Running Code Awareness tests...")
-  
-  ;; Test configuration
-  (message "Catalog: %s" codeawareness-catalog)
-  (message "Highlight while closed: %s" (if codeawareness-highlight-while-closed "yes" "no"))
-  (message "Update delay: %s" (number-to-string codeawareness-update-delay))
-  
-  ;; Test logging
-  (codeawareness-log-info "Test info message")
-  (codeawareness-log-warn "Test warning message")
-  (codeawareness-log-error "Test error message")
-  
-  ;; Test GUID generation
-  (let ((guid (codeawareness--generate-guid)))
-    (message "Generated GUID: %s" guid))
-  
-  ;; Test socket path generation
-  (let ((path (codeawareness--get-socket-path "test-guid")))
-    (message "Socket path: %s" path))
-  
-  ;; Test catalog socket path
-  (let ((catalog-path (codeawareness--get-catalog-socket-path)))
-    (message "Catalog socket path: %s" catalog-path)
-    (message "Catalog socket exists: %s" (file-exists-p catalog-path))
-    (message "Catalog socket permissions: %s" (file-attributes catalog-path))
-    (message "Temporary directory: %s" (temporary-file-directory))
-    (message "Directory file name: %s" (directory-file-name (temporary-file-directory))))
-  
-  ;; Test current connection status
-  (message "Current catalog process: %s" codeawareness--ipc-catalog-process)
-  (message "Current IPC process: %s" codeawareness--ipc-process)
-  (message "Connected status: %s" codeawareness--connected)
-  
-  ;; Test if we can connect manually
-  (condition-case err
-      (let ((test-socket (make-network-process
-                          :name "test-catalog"
-                          :family 'local
-                          :service (codeawareness--get-catalog-socket-path))))
-        (message "Manual connection test: SUCCESS")
-        (delete-process test-socket))
-    (error
-     (message "Manual connection test: FAILED - %s" err)))
-  
-  ;; Test refreshActiveFile functionality
-  (message "Testing refreshActiveFile functionality...")
-  (message "Current active buffer: %s" codeawareness--active-buffer)
-  (message "Current buffer file: %s" (buffer-file-name (current-buffer)))
-  (message "Authenticated: %s" (if codeawareness--authenticated "yes" "no"))
-  
-  ;; Test manual refresh
-  (codeawareness--refresh-active-file)
-  
-  (message "Basic tests completed"))
+;;; Cleanup on Emacs exit
 
-(defun codeawareness-test-buffer-switching ()
-  "Test buffer switching functionality."
+(defun codeawareness--cleanup-on-exit ()
+  "Cleanup Code Awareness when Emacs is about to exit."
+  (when codeawareness-mode
+    (codeawareness-log-info "Code Awareness: Emacs exiting, cleaning up connections")
+    ;; Send disconnect messages first, then force cleanup
+    (codeawareness--send-disconnect-messages)
+    ;; Force synchronous cleanup to ensure processes are deleted
+    (codeawareness--force-cleanup)))
+
+;; Register cleanup functions to run when Emacs exits
+(add-hook 'kill-emacs-hook #'codeawareness--cleanup-on-exit)
+
+;; Add a function to handle the specific case where we're about to exit
+(defun codeawareness--handle-exit-request ()
+  "Handle exit requests by cleaning up before Emacs checks for active processes."
   (interactive)
-  (message "Testing buffer switching functionality...")
-  
-  ;; Test current state
-  (message "Current buffer: %s" (current-buffer))
-  (message "Current buffer file: %s" (buffer-file-name (current-buffer)))
-  (message "Active buffer: %s" codeawareness--active-buffer)
-  (message "Active buffer file: %s" (when codeawareness--active-buffer 
-                                      (buffer-file-name codeawareness--active-buffer)))
-  
-  ;; Test post-command-hook logic manually
-  (let ((current-buffer (current-buffer)))
-    (message "Testing post-command-hook logic...")
-    (message "Current buffer: %s" current-buffer)
-    (message "Active buffer: %s" codeawareness--active-buffer)
-    (message "Buffers equal: %s" (eq current-buffer codeawareness--active-buffer))
-    (message "Has file: %s" (if (buffer-file-name current-buffer) "yes" "no"))
-    
-    (when (and current-buffer
-               (not (eq current-buffer codeawareness--active-buffer)))
-      (if (buffer-file-name current-buffer)
-          (progn
-            (message "Would set active buffer and refresh")
-            (setq codeawareness--active-buffer current-buffer)
-            (codeawareness--refresh-active-file))
-        (message "Would clear active buffer"))))
-  
-  (message "Buffer switching test completed"))
+  (when codeawareness-mode
+    (codeawareness-log-info "Code Awareness: Exit request received, cleaning up")
+    (codeawareness--send-disconnect-messages)
+    (codeawareness--force-cleanup)))
 
 ;;; Minor Mode
 
@@ -1104,47 +1131,20 @@ Enable Code Awareness functionality for collaborative development."
 (defun codeawareness--disable ()
   "Disable Code Awareness."
   (codeawareness-log-info "Code Awareness: Disabling and disconnecting")
-  
+
   ;; Clear all highlights
   (codeawareness--clear-all-highlights)
-  
+
   ;; Send disconnect messages before closing connections
   (codeawareness--send-disconnect-messages)
-  
+
   ;; Use force cleanup to ensure all processes are properly deleted
   (codeawareness--force-cleanup)
-  
+
   ;; Clear the store
   (codeawareness--clear-store)
-  
+
   (codeawareness-log-info "Code Awareness disabled"))
-
-;;; Keybindings
-
-(defvar codeawareness-mode-map
-  (let ((map (make-sparse-keymap)))
-    (define-key map (kbd "C-c C-a t") #'codeawareness-toggle)
-    (define-key map (kbd "C-c C-a r") #'codeawareness-refresh)
-    (define-key map (kbd "C-c C-a T") #'codeawareness-test)
-    (define-key map (kbd "C-c C-a l") #'codeawareness-show-log-buffer)
-    (define-key map (kbd "C-c C-a d") #'codeawareness-disconnect)
-    (define-key map (kbd "C-c C-a x") #'codeawareness--handle-exit-request)
-    ;; Highlight management
-    (define-key map (kbd "C-c C-a h") #'codeawareness-clear-highlights)
-    (define-key map (kbd "C-c C-a H") #'codeawareness-clear-all-highlights)
-    (define-key map (kbd "C-c C-a R") #'codeawareness-refresh-highlights)
-    ;; Authentication
-    (define-key map (kbd "C-c C-a s") #'codeawareness-auth-status)
-    (define-key map (kbd "C-c C-a c") #'codeawareness-connection-status)
-    (define-key map (kbd "C-c C-a D") #'codeawareness-debug-connection)
-    (define-key map (kbd "C-c C-a y") #'codeawareness-retry-connection)
-    (define-key map (kbd "C-c C-a a") #'codeawareness-manual-auth)
-    ;; Testing refreshActiveFile
-    (define-key map (kbd "C-c C-a f") #'codeawareness--refresh-active-file)
-    ;; Testing buffer switching
-    (define-key map (kbd "C-c C-a b") #'codeawareness-test-buffer-switching)
-    map)
-  "Keymap for Code Awareness mode.")
 
 ;;; Cleanup on Emacs exit
 
@@ -1169,29 +1169,6 @@ Enable Code Awareness functionality for collaborative development."
     (codeawareness--force-cleanup)
     ;; Return nil to allow buffer kill to continue
     nil))
-
-(defun codeawareness--cleanup-on-exit ()
-  "Cleanup Code Awareness when Emacs is about to exit."
-  (when codeawareness-mode
-    (codeawareness-log-info "Code Awareness: Emacs exiting, cleaning up connections")
-    ;; Send disconnect messages first, then force cleanup
-    (codeawareness--send-disconnect-messages)
-    ;; Force synchronous cleanup to ensure processes are deleted
-    (codeawareness--force-cleanup)))
-
-;; Register cleanup functions to run when Emacs exits
-(add-hook 'kill-emacs-hook #'codeawareness--cleanup-on-exit)
-
-;; Add a function to handle the specific case where we're about to exit
-(defun codeawareness--handle-exit-request ()
-  "Handle exit requests by cleaning up before Emacs checks for active processes."
-  (interactive)
-  (when codeawareness-mode
-    (codeawareness-log-info "Code Awareness: Exit request detected, cleaning up")
-    (codeawareness--send-disconnect-messages)
-    (codeawareness--force-cleanup)))
-
-
 
 ;;; Provide
 
