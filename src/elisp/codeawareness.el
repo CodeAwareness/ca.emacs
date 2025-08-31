@@ -1,10 +1,11 @@
 ;;; codeawareness.el --- Code Awareness for Emacs -*- lexical-binding: t -*-
 
-;; Copyright (C) 2023 - 2024 Mark Vasile
+;; Copyright (C) 2023 - 2025 Mark Vasile
 
 ;; Author: Mark Vasile <mark@codeawareness.com>
 ;; Package-Requires: ((emacs "26.1"))
-;; Homepage: https://github.com/CodeAwareness/codeawareness-emacs
+;; Homepage: https://github.com/CodeAwareness/ca.emacs
+
 ;; Version: 1.0
 
 ;; This program is free software; you can redistribute it and/or modify
@@ -67,9 +68,6 @@
 
 (defvar codeawareness--last-file-buffer nil
   "Last buffer with a file that was active.")
-
-(defvar codeawareness--pending-hl-data nil
-  "Pending hl data waiting for an active buffer.")
 
 (defvar codeawareness--update-timer nil
   "Timer for debounced updates.")
@@ -187,7 +185,7 @@
   (codeawareness-log-info "Code Awareness: Adding project %s" (alist-get 'root project))
   (setq codeawareness--active-project project)
   ;; Add to projects list if not already present
-  (unless (cl-find (alist-get 'root project) codeawareness--projects 
+  (unless (cl-find (alist-get 'root project) codeawareness--projects
                    :key (lambda (p) (alist-get 'root p)) :test 'string=)
     (push project codeawareness--projects))
   (codeawareness--init-store)
@@ -226,7 +224,7 @@
   (codeawareness-log-info "Code Awareness: IPC process exists: %s" (if codeawareness--ipc-process "yes" "no"))
   (when codeawareness--ipc-process
     (codeawareness-log-info "Code Awareness: IPC process status: %s" (process-status codeawareness--ipc-process)))
-  
+
   ;; Check if we have the necessary components to send a refresh request
   (let ((fpath (codeawareness--get-active-file-path))
         (doc (codeawareness--get-active-file-content)))
@@ -234,7 +232,7 @@
         (codeawareness-log-info "Code Awareness: No active file to refresh")
       (if (not codeawareness--authenticated)
           (codeawareness-log-warn "Code Awareness: Not authenticated, skipping file refresh")
-        (if (not (and codeawareness--ipc-process 
+        (if (not (and codeawareness--ipc-process
                       (eq (process-status codeawareness--ipc-process) 'open)))
             (codeawareness-log-warn "Code Awareness: IPC process not ready, skipping file refresh")
           (codeawareness-log-info "Code Awareness: Refreshing active file %s" fpath)
@@ -242,15 +240,7 @@
                                 (doc . ,doc)
                                 (caw . ,codeawareness--guid))))
             (codeawareness--transmit "repo:active-path" message-data)
-            (codeawareness--setup-response-handler "code" "repo:active-path"))))))
-  
-  ;; Apply pending hl data if we have any
-  (when (and codeawareness--pending-hl-data codeawareness--active-buffer (buffer-live-p codeawareness--active-buffer))
-    (codeawareness-log-info "Code Awareness: Applying pending hl data to buffer %s" (buffer-name codeawareness--active-buffer))
-    (let ((highlights (codeawareness--convert-hl-to-highlights codeawareness--pending-hl-data)))
-      (when highlights
-        (codeawareness--apply-highlights-from-data codeawareness--active-buffer highlights)))
-    (setq codeawareness--pending-hl-data nil)))
+            (codeawareness--setup-response-handler "code" "repo:active-path")))))))
 
 ;;; Highlighting System
 
@@ -261,13 +251,13 @@
           (overlap . ,(make-face 'codeawareness-overlap-face))
           (peer . ,(make-face 'codeawareness-peer-face))
           (modified . ,(make-face 'codeawareness-modified-face))))
-  
+
   ;; Set face attributes based on color theme
   (let ((conflict-face (alist-get 'conflict codeawareness--highlight-faces))
         (overlap-face (alist-get 'overlap codeawareness--highlight-faces))
         (peer-face (alist-get 'peer codeawareness--highlight-faces))
         (modified-face (alist-get 'modified codeawareness--highlight-faces)))
-    
+
     ;; Detect if we're in a dark theme
     (let ((is-dark-theme (eq (frame-parameter nil 'background-mode) 'dark)))
       (if is-dark-theme
@@ -278,25 +268,25 @@
                                 :background "#4a1a1a"
                                 :foreground "#ff6b6b"
                                 :weight 'bold)
-            
+
             ;; Overlap highlights (yellow/orange background for dark theme)
             (set-face-attribute overlap-face nil
                                 :background "#4a3a1a"
                                 :foreground "#ffd93d"
                                 :weight 'normal)
-            
+
             ;; Peer highlights (blue background for dark theme)
             (set-face-attribute peer-face nil
                                 :background "#1a2a4a"
                                 :foreground "#74c0fc"
                                 :weight 'normal)
-            
+
             ;; Modified highlights (green background for dark theme)
             (set-face-attribute modified-face nil
                                 :background "#1a4a1a"
                                 :foreground "#69db7c"
                                 :weight 'normal))
-        
+
         ;; Light theme colors
         (progn
           ;; Conflict highlights (red background for light theme)
@@ -304,29 +294,29 @@
                               :background "#ffebee"
                               :foreground "#c62828"
                               :weight 'bold)
-          
+
           ;; Overlap highlights (yellow background for light theme)
           (set-face-attribute overlap-face nil
                               :background "#fff8e1"
                               :foreground "#f57f17"
                               :weight 'normal)
-          
+
           ;; Peer highlights (blue background for light theme)
           (set-face-attribute peer-face nil
                               :background "#e3f2fd"
                               :foreground "#1565c0"
                               :weight 'normal)
-          
+
           ;; Modified highlights (green background for light theme)
           (set-face-attribute modified-face nil
                               :background "#e8f5e8"
                               :foreground "#2e7d32"
                               :weight 'normal)))))
-  
+
   ;; Initialize hl-line faces if hl-line is available
   (when (featurep 'hl-line)
     (codeawareness--init-hl-line-faces))
-  
+
   (codeawareness-log-info "Code Awareness: Highlight faces initialized"))
 
 (defun codeawareness--get-highlight-face (type)
@@ -334,8 +324,7 @@
   (alist-get type codeawareness--highlight-faces))
 
 (defun codeawareness--create-line-overlay (buffer line-number face &optional properties)
-  "Create an overlay for a specific line in the given buffer.
-Uses hl-line technique to properly handle empty lines."
+  "Create an overlay for a specific line in the given buffer. Uses hl-line technique to properly handle empty lines."
   (when (and buffer (buffer-live-p buffer))
     (with-current-buffer buffer
       (let* ((line-count (line-number-at-pos (point-max)))
@@ -394,16 +383,6 @@ Uses hl-line technique to properly handle empty lines."
           (puthash line-number overlay buffer-highlights))
         overlay))))
 
-(defun codeawareness--remove-highlight (buffer line-number)
-  "Remove a highlight from the specified line in the given buffer."
-  (let* ((buffer-highlights (gethash buffer codeawareness--highlights))
-         (overlay (when buffer-highlights (gethash line-number buffer-highlights))))
-    (when overlay
-      (delete-overlay overlay)
-      (remhash line-number buffer-highlights)
-      (codeawareness-log-info "Code Awareness: Removed highlight from line %d in buffer %s" 
-                              line-number buffer))))
-
 (defun codeawareness--refresh-buffer-highlights (buffer)
   "Refresh highlights for the given buffer by recreating them."
   (when (and buffer (buffer-live-p buffer))
@@ -419,18 +398,11 @@ Uses hl-line technique to properly handle empty lines."
                      (codeawareness--add-highlight buffer line-number type properties)))
                  buffer-highlights)))))
 
-(defun codeawareness--schedule-highlight-refresh (buffer)
-  "Schedule a debounced highlight refresh for the given buffer."
-  (when codeawareness--highlight-timer
-    (cancel-timer codeawareness--highlight-timer))
-  (setq codeawareness--highlight-timer
-        (run-with-timer codeawareness-highlight-refresh-delay nil 
-                        #'codeawareness--refresh-buffer-highlights buffer)))
 
 (defun codeawareness--apply-highlights-from-data (buffer highlight-data)
   "Apply highlights to buffer based on data from the local service."
   (when (and buffer (buffer-live-p buffer) highlight-data)
-    (codeawareness-log-info "Code Awareness: Applying highlights to buffer %s, data: %s" 
+    (codeawareness-log-info "Code Awareness: Applying highlights to buffer %s, data: %s"
                             (buffer-name buffer) highlight-data)
     ;; Use hl-line mode if configured, otherwise use custom overlays
     (if (and codeawareness-use-hl-line-mode (featurep 'hl-line))
@@ -440,7 +412,7 @@ Uses hl-line technique to properly handle empty lines."
       (codeawareness-log-info "Code Awareness: Using custom overlay mode for highlighting")
       ;; Clear existing highlights first
       ;; (codeawareness--clear-buffer-highlights buffer)
-      
+
       ;; Apply new highlights
       (dolist (highlight highlight-data)
         (let ((line (alist-get 'line highlight))
@@ -449,38 +421,14 @@ Uses hl-line technique to properly handle empty lines."
           (when (and line type)
             (codeawareness--add-highlight buffer line type properties)))))))
 
-(defun codeawareness--convert-agg-to-highlights (agg-data)
-  "Convert agg data structure to highlight format.
-AGG-DATA should be an alist where values are arrays of line numbers.
-Returns a list of highlight alists with 'line and 'type keys."
-  (let ((highlights '()))
-    (dolist (entry agg-data highlights)
-      (let ((sha (car entry))
-            (line-numbers (cdr entry)))
-        ;; Handle both lists and vectors (JSON arrays are parsed as vectors)
-        (when (and (or (listp line-numbers) (vectorp line-numbers)) 
-                   (> (length line-numbers) 0))
-          (dolist (line-number (if (vectorp line-numbers) 
-                                   (append line-numbers nil) 
-                                 line-numbers))
-            (when (numberp line-number)
-              ;; Convert 0-based line numbers to 1-based (Emacs convention)
-              (let ((emacs-line (1+ line-number)))
-                (push `((line . ,emacs-line)
-                        (type . modified)
-                        (properties . ((sha . ,sha))))
-                      highlights)))))))))
-
 (defun codeawareness--convert-hl-to-highlights (hl-data)
-  "Convert hl data structure to highlight format.
-HL-DATA should be an array of line numbers.
-Returns a list of highlight alists with 'line and 'type keys."
+  "Convert hl data structure to highlight format. HL-DATA should be an array of line numbers. Returns a list of highlight alists with 'line and 'type keys."
   (let ((highlights '()))
     ;; Handle both lists and vectors (JSON arrays are parsed as vectors)
-    (when (and (or (listp hl-data) (vectorp hl-data)) 
+    (when (and (or (listp hl-data) (vectorp hl-data))
                (> (length hl-data) 0))
-      (dolist (line-number (if (vectorp hl-data) 
-                               (append hl-data nil) 
+      (dolist (line-number (if (vectorp hl-data)
+                               (append hl-data nil)
                              hl-data))
         (when (numberp line-number)
           ;; Convert 0-based line numbers to 1-based (Emacs convention)
@@ -535,9 +483,9 @@ Returns a list of highlight alists with 'line and 'type keys."
       (codeawareness--init-hl-line-faces))
     (let* ((face (codeawareness--get-hl-line-face type))
            (overlay (make-overlay (line-beginning-position line-number)
-                                 (line-beginning-position (1+ line-number))
-                                 buffer t nil)))
-      (codeawareness-log-info "Code Awareness: Created hl-line overlay for line %d in buffer %s with face %s" 
+                                  (line-beginning-position (1+ line-number))
+                                  buffer t nil)))
+      (codeawareness-log-info "Code Awareness: Created hl-line overlay for line %d in buffer %s with face %s"
                               line-number (buffer-name buffer) face)
       (overlay-put overlay 'face face)
       (overlay-put overlay 'codeawareness-type 'hl-line-highlight)
@@ -566,7 +514,7 @@ Returns a list of highlight alists with 'line and 'type keys."
 (defun codeawareness--apply-hl-line-highlights-from-data (buffer highlight-data)
   "Apply hl-line highlights to buffer based on data from the local service."
   (when (and buffer (buffer-live-p buffer) highlight-data (featurep 'hl-line))
-    (codeawareness-log-info "Code Awareness: Applying hl-line highlights to buffer %s, count: %d" 
+    (codeawareness-log-info "Code Awareness: Applying hl-line highlights to buffer %s, count: %d"
                             (buffer-name buffer) (length highlight-data))
     ;; Clear existing highlights first
     (codeawareness--clear-buffer-hl-line-highlights buffer)
@@ -594,20 +542,6 @@ Returns a list of highlight alists with 'line and 'type keys."
 (defun codeawareness--get-catalog-socket-path ()
   "Get the catalog socket path."
   (codeawareness--get-socket-path codeawareness-catalog))
-
-(defun codeawareness--create-ipc-process (guid)
-  "Create an IPC process for the given GUID."
-  (let* ((socket-path (codeawareness--get-socket-path guid))
-         (process-name (format "codeawareness-ipc-%s" guid))
-         (buffer-name (format "*%s*" process-name)))
-    (make-network-process
-     :name process-name
-     :buffer buffer-name
-     :family 'local
-     :service socket-path
-     :sentinel #'codeawareness--ipc-sentinel
-     :filter #'codeawareness--ipc-filter
-     :noquery t)))
 
 (defun codeawareness--ipc-sentinel (process event)
   "Handle IPC process sentinel events."
@@ -674,9 +608,9 @@ Returns a list of highlight alists with 'line and 'type keys."
             (codeawareness--handle-response domain action response-data)
           (if (and (string= flow "err") action)
               (codeawareness--handle-error domain action error-data)
-          (if (and (string= flow "req") action)
-              (codeawareness-log-info "Code Awareness: Received request (not handling): %s:%s" domain action)
-            (codeawareness-log-warn "Code Awareness: Unknown message format: %s" message)))))
+            (if (and (string= flow "req") action)
+                (codeawareness-log-info "Code Awareness: Received request (not handling): %s:%s" domain action)
+              (codeawareness-log-warn "Code Awareness: Unknown message format: %s" message)))))
     (error
      (codeawareness-log-error "Code Awareness: Error parsing IPC message: %s" err))))
 
@@ -707,14 +641,8 @@ Returns a list of highlight alists with 'line and 'type keys."
           (codeawareness-log-info "Code Awareness: Applying highlights to buffer %s" (buffer-name buffer))
           ;; Convert hl data to highlight format
           (let ((highlights (codeawareness--convert-hl-to-highlights hl-data)))
-            (codeawareness-log-info "Code Awareness: Converted highlights: %s" highlights)
             (when highlights
-              (codeawareness--apply-highlights-from-data buffer highlights))))
-      ;; Store pending hl data if no active buffer
-      (when hl-data
-        (codeawareness-log-info "Code Awareness: No active buffer, storing pending hl data: %s" hl-data)
-        (setq codeawareness--pending-hl-data hl-data))))
-  (codeawareness-log-info "Code Awareness: Project added successfully"))
+              (codeawareness--apply-highlights-from-data buffer highlights)))))))
 
 (defun codeawareness--handle-auth-info-response (data)
   "Handle response from auth:info request."
@@ -745,18 +673,18 @@ Returns a list of highlight alists with 'line and 'type keys."
   (let* ((domain (if (member action '("auth:info" "auth:login")) "*" "code"))
          (flow "req")
          (message (json-encode `((flow . ,flow)
-                                (domain . ,domain)
-                                (action . ,action)
-                                (data . ,data)
-                                (caw . ,codeawareness--guid)))))
+                                 (domain . ,domain)
+                                 (action . ,action)
+                                 (data . ,data)
+                                 (caw . ,codeawareness--guid)))))
     (if codeawareness--ipc-process
         (if (eq (process-status codeawareness--ipc-process) 'open)
             (progn
               (codeawareness-log-info "Code Awareness: Sending %s:%s" domain action)
               (process-send-string codeawareness--ipc-process (concat message "\f"))
               (codeawareness--setup-response-handler domain action))
-          (codeawareness-log-error "Code Awareness: IPC process exists but is not open (status: %s)" 
-                                  (process-status codeawareness--ipc-process)))
+          (codeawareness-log-error "Code Awareness: IPC process exists but is not open (status: %s)"
+                                   (process-status codeawareness--ipc-process)))
       (codeawareness-log-error "Code Awareness: No IPC process available for transmission"))))
 
 (defun codeawareness--setup-response-handler (domain action)
@@ -798,22 +726,22 @@ Returns a list of highlight alists with 'line and 'type keys."
     (codeawareness-log-info "Code Awareness: Connecting to catalog")
     (condition-case err
         (progn
-                  (setq codeawareness--ipc-catalog-process
-              (make-network-process
-               :name process-name
-               :buffer buffer-name
-               :family 'local
-               :service catalog-path
-               :sentinel #'codeawareness--catalog-sentinel
-               :filter #'codeawareness--catalog-filter
-               :noquery t))
+          (setq codeawareness--ipc-catalog-process
+                (make-network-process
+                 :name process-name
+                 :buffer buffer-name
+                 :family 'local
+                 :service catalog-path
+                 :sentinel #'codeawareness--catalog-sentinel
+                 :filter #'codeawareness--catalog-filter
+                 :noquery t))
           (codeawareness-log-info "Code Awareness: Catalog connection initiated")
           ;; Check process status immediately and after a delay
           (codeawareness--check-catalog-process-status)
           (run-with-timer 0.5 nil #'codeawareness--check-catalog-process-status))
       (error
        (codeawareness-log-error "Code Awareness: Failed to create catalog connection: %s" err)
-       (message "Code Awareness: Failed to connect to catalog service at %s. Error: %s" 
+       (message "Code Awareness: Failed to connect to catalog service at %s. Error: %s"
                 catalog-path err)))))
 
 (defun codeawareness--catalog-sentinel (process event)
@@ -822,9 +750,9 @@ Returns a list of highlight alists with 'line and 'type keys."
   (codeawareness-log-info "Code Awareness Catalog: Process: %s" process)
   (cond
    ((string-match "failed" event)
-    (codeawareness-log-error "Code Awareness: Failed to connect to catalog service at %s" 
-                            (codeawareness--get-catalog-socket-path))
-    (message "Code Awareness: Failed to connect to catalog service. Check if the service is running on %s" 
+    (codeawareness-log-error "Code Awareness: Failed to connect to catalog service at %s"
+                             (codeawareness--get-catalog-socket-path))
+    (message "Code Awareness: Failed to connect to catalog service. Check if the service is running on %s"
              (codeawareness--get-catalog-socket-path))
     (setq codeawareness--connected nil))
    ((string-match "exited" event)
@@ -849,7 +777,7 @@ Returns a list of highlight alists with 'line and 'type keys."
   (when codeawareness--client-registered
     (codeawareness-log-info "Code Awareness: Client already registered, skipping")
     (return-from codeawareness--register-client))
-  
+
   (let ((message (json-encode `((flow . "req")
                                 (domain . "*")
                                 (action . "clientId")
@@ -876,7 +804,7 @@ Returns a list of highlight alists with 'line and 'type keys."
 (defun codeawareness--send-auth-info ()
   "Send auth:info request to the local service."
   (codeawareness-log-info "Code Awareness: Sending auth:info request")
-  (if (and codeawareness--ipc-process 
+  (if (and codeawareness--ipc-process
            (eq (process-status codeawareness--ipc-process) 'open))
       (codeawareness--transmit "auth:info" nil)
     (codeawareness-log-error "Code Awareness: IPC process not ready for auth:info request")))
@@ -897,9 +825,9 @@ Returns a list of highlight alists with 'line and 'type keys."
           (codeawareness--connect-to-local-service))
       (if (>= codeawareness--poll-attempts codeawareness--max-poll-attempts)
           (progn
-            (codeawareness-log-error "Code Awareness: Failed to find local service socket after %d attempts" 
-                                    codeawareness--max-poll-attempts)
-            (message "Code Awareness: Failed to connect to local service after %d attempts" 
+            (codeawareness-log-error "Code Awareness: Failed to find local service socket after %d attempts"
+                                     codeawareness--max-poll-attempts)
+            (message "Code Awareness: Failed to connect to local service after %d attempts"
                      codeawareness--max-poll-attempts))
         (setq codeawareness--poll-attempts (1+ codeawareness--poll-attempts))
         ;; Exponential backoff: 0.5s, 1s, 2s, 4s, 8s, etc.
@@ -940,7 +868,7 @@ Returns a list of highlight alists with 'line and 'type keys."
 
 (defun codeawareness--check-connection-timeout ()
   "Check if the connection is stuck and handle timeout."
-  (when (and codeawareness--ipc-process 
+  (when (and codeawareness--ipc-process
              (not codeawareness--connected))
     (let ((status (process-status codeawareness--ipc-process)))
       (if (eq status 'connect)
@@ -952,7 +880,7 @@ Returns a list of highlight alists with 'line and 'type keys."
 
 (defun codeawareness--fallback-workspace-init ()
   "Fallback workspace initialization if sentinel doesn't fire."
-  (when (and codeawareness--ipc-process 
+  (when (and codeawareness--ipc-process
              (eq (process-status codeawareness--ipc-process) 'open)
              (not codeawareness--connected))
     (codeawareness-log-info "Code Awareness: Using fallback workspace init")
@@ -961,7 +889,7 @@ Returns a list of highlight alists with 'line and 'type keys."
 (defun codeawareness--force-cleanup ()
   "Force cleanup of all Code Awareness processes and state."
   (codeawareness-log-info "Code Awareness: Force cleaning up all processes")
-  
+
   ;; Cancel any pending timers
   (when codeawareness--update-timer
     (cancel-timer codeawareness--update-timer)
@@ -969,7 +897,7 @@ Returns a list of highlight alists with 'line and 'type keys."
   (when codeawareness--highlight-timer
     (cancel-timer codeawareness--highlight-timer)
     (setq codeawareness--highlight-timer nil))
-  
+
   ;; Force delete processes regardless of status
   (when codeawareness--ipc-catalog-process
     (condition-case err
@@ -983,7 +911,7 @@ Returns a list of highlight alists with 'line and 'type keys."
       (error
        (codeawareness-log-error "Code Awareness: Error deleting catalog process: %s" err)))
     (setq codeawareness--ipc-catalog-process nil))
-  
+
   (when codeawareness--ipc-process
     (condition-case err
         (progn
@@ -996,11 +924,11 @@ Returns a list of highlight alists with 'line and 'type keys."
       (error
        (codeawareness-log-error "Code Awareness: Error deleting IPC process: %s" err)))
     (setq codeawareness--ipc-process nil))
-  
+
   ;; Remove hooks
   (remove-hook 'after-save-hook #'codeawareness--after-save-hook)
   (remove-hook 'post-command-hook #'codeawareness--post-command-hook)
-  
+
   ;; Reset all state
   (setq codeawareness--connected nil
         codeawareness--authenticated nil
@@ -1009,15 +937,15 @@ Returns a list of highlight alists with 'line and 'type keys."
         codeawareness--guid nil
         codeawareness--client-registered nil
         codeawareness--poll-attempts 0)
-  
+
   (codeawareness-log-info "Code Awareness: Force cleanup completed"))
 
 (defun codeawareness--send-disconnect-messages ()
   "Send disconnect messages to catalog service."
   (codeawareness-log-info "Code Awareness: Sending disconnect messages")
-  
+
   ;; Send disconnect message to catalog
-  (when (and codeawareness--ipc-catalog-process 
+  (when (and codeawareness--ipc-catalog-process
              (eq (process-status codeawareness--ipc-catalog-process) 'open))
     (let ((message (json-encode `((flow . "req")
                                   (domain . "*")
@@ -1043,18 +971,7 @@ Returns a list of highlight alists with 'line and 'type keys."
               (codeawareness--catalog-filter codeawareness--ipc-catalog-process "connected")))
         (codeawareness-log-error "Code Awareness: Catalog process not open, status: %s" status)))))
 
-(defun codeawareness--schedule-reconnect ()
-  "Schedule a reconnection attempt."
-  (run-with-timer 2 nil #'codeawareness--init-ipc))
-
 ;;; Buffer Management
-
-(defun codeawareness--set-active-buffer (buffer)
-  "Set the active buffer for Code Awareness."
-  (when (and buffer (buffer-file-name buffer))
-    (setq codeawareness--active-buffer buffer)
-    (setq codeawareness--last-file-buffer buffer) ; Update the last file buffer
-    (codeawareness--schedule-update)))
 
 (defun codeawareness--schedule-update ()
   "Schedule a debounced update."
@@ -1070,43 +987,40 @@ Returns a list of highlight alists with 'line and 'type keys."
              (buffer-live-p codeawareness--active-buffer)
              (buffer-file-name codeawareness--active-buffer))
     (let ((filename (buffer-file-name codeawareness--active-buffer)))
-      (codeawareness--transmit "repo:file-saved" 
-                              `((fpath . ,filename)
-                                (doc . ,(buffer-string))
-                                (caw . ,codeawareness--guid))))))
+      (codeawareness--transmit "repo:file-saved"
+                               `((fpath . ,filename)
+                                 (doc . ,(buffer-string))
+                                 (caw . ,codeawareness--guid))))))
 
 ;;; Hooks and Event Handling
 
 (defun codeawareness--after-save-hook ()
   "Hook function for after-save-hook."
-  (codeawareness--update)
-  ;; Refresh highlights after save to ensure they're still valid
-  (when codeawareness--active-buffer
-    (codeawareness--schedule-highlight-refresh codeawareness--active-buffer)))
+  (codeawareness--update))
 
 (defun codeawareness--post-command-hook ()
   "Hook function for post-command-hook."
   (let ((current-buffer (current-buffer)))
     (when (and current-buffer
                (not (eq current-buffer codeawareness--active-buffer)))
-      (codeawareness-log-info "Code Awareness: Buffer switch detected: %s -> %s (has-file: %s)" 
+      (codeawareness-log-info "Code Awareness: Buffer switch detected: %s -> %s (has-file: %s)"
                               (if codeawareness--active-buffer (buffer-name codeawareness--active-buffer) "nil")
                               (buffer-name current-buffer)
                               (if (buffer-file-name current-buffer) "yes" "no"))
-      ;; (when (and codeawareness--active-buffer 
+      ;; (when (and codeawareness--active-buffer
       ;;           (buffer-live-p codeawareness--active-buffer))
-      ;;  (codeawareness-log-info "Code Awareness: Clearing highlights from previous buffer %s (switching to: %s)" 
+      ;;  (codeawareness-log-info "Code Awareness: Clearing highlights from previous buffer %s (switching to: %s)"
       ;;                          (buffer-name codeawareness--active-buffer) (buffer-name current-buffer))
       ;;  (codeawareness--clear-buffer-highlights codeawareness--active-buffer))
-      
+
       (if (buffer-file-name current-buffer)
           ;; Set the active buffer and refresh immediately (like VS Code's onDidChangeActiveTextEditor)
           (progn
             (codeawareness-log-info "Code Awareness: Active buffer changed to %s" (buffer-file-name current-buffer))
             ;; Clear last hl data if switching to a different file
-            (when (and codeawareness--active-buffer 
+            (when (and codeawareness--active-buffer
                        (buffer-file-name codeawareness--active-buffer)
-                       (not (string= (buffer-file-name codeawareness--active-buffer) 
+                       (not (string= (buffer-file-name codeawareness--active-buffer)
                                      (buffer-file-name current-buffer))))
               (codeawareness-log-info "Code Awareness: Switching to different file"))
             (setq codeawareness--active-buffer current-buffer)
@@ -1160,27 +1074,12 @@ Returns a list of highlight alists with 'line and 'type keys."
   "Show the current connection status."
   (interactive)
   (message "Code Awareness: Catalog connected: %s, Local service connected: %s, Authenticated: %s, Client registered: %s"
-           (if (and codeawareness--ipc-catalog-process 
+           (if (and codeawareness--ipc-catalog-process
                     (eq (process-status codeawareness--ipc-catalog-process) 'open)) "yes" "no")
-           (if (and codeawareness--ipc-process 
+           (if (and codeawareness--ipc-process
                     (eq (process-status codeawareness--ipc-process) 'open)) "yes" "no")
            (if codeawareness--authenticated "yes" "no")
            (if codeawareness--client-registered "yes" "no")))
-
-(defun codeawareness-debug-connection ()
-  "Show detailed connection debug information."
-  (interactive)
-  (let ((catalog-status (if codeawareness--ipc-catalog-process 
-                            (process-status codeawareness--ipc-catalog-process) 
-                          "nil"))
-        (local-status (if codeawareness--ipc-process 
-                          (process-status codeawareness--ipc-process) 
-                        "nil")))
-    (message "Code Awareness Debug: Catalog process: %s (status: %s), Local process: %s (status: %s), Connected: %s, Authenticated: %s"
-             codeawareness--ipc-catalog-process catalog-status
-             codeawareness--ipc-process local-status
-             codeawareness--connected
-             codeawareness--authenticated)))
 
 (defun codeawareness-retry-connection ()
   "Manually retry the connection to the local service."
@@ -1192,18 +1091,6 @@ Returns a list of highlight alists with 'line and 'type keys."
   (setq codeawareness--connected nil)
   (run-with-timer 0.5 nil #'codeawareness--connect-to-local-service)
   (message "Code Awareness: Connection retry initiated"))
-
-(defun codeawareness-manual-auth ()
-  "Manually trigger authentication."
-  (interactive)
-  (codeawareness-log-info "Code Awareness: Manual auth trigger requested")
-  (if (and codeawareness--ipc-process 
-           (eq (process-status codeawareness--ipc-process) 'open))
-      (progn
-        (codeawareness-log-info "Code Awareness: IPC process is open, triggering workspace init")
-        (codeawareness--init-workspace)
-        (message "Code Awareness: Manual auth triggered"))
-    (message "Code Awareness: IPC process not ready for auth")))
 
 (defun codeawareness-disconnect ()
   "Manually disconnect from Code Awareness services."
@@ -1260,8 +1147,8 @@ Returns a list of highlight alists with 'line and 'type keys."
   ;; Test with a simple overlay using the modified face
   (let* ((face (codeawareness--get-hl-line-face 'modified))
          (overlay (make-overlay (line-beginning-position 1)
-                               (line-beginning-position 2)
-                               (current-buffer) t nil)))
+                                (line-beginning-position 2)
+                                (current-buffer) t nil)))
     (overlay-put overlay 'face face)
     (overlay-put overlay 'codeawareness-type 'test)
     (message "Code Awareness: Test overlay created with face %s on line 1" face)
@@ -1279,8 +1166,8 @@ Returns a list of highlight alists with 'line and 'type keys."
     (let* ((face (codeawareness--get-hl-line-face type))
            (line (+ 2 (cl-position type '(modified conflict peer overlap))))
            (overlay (make-overlay (line-beginning-position line)
-                                 (line-beginning-position (1+ line))
-                                 (current-buffer) t nil)))
+                                  (line-beginning-position (1+ line))
+                                  (current-buffer) t nil)))
       (overlay-put overlay 'face face)
       (overlay-put overlay 'codeawareness-type 'test)
       (message "Code Awareness: Test overlay for %s face on line %d" type line)
@@ -1308,17 +1195,6 @@ Returns a list of highlight alists with 'line and 'type keys."
     ;; Force synchronous cleanup to ensure processes are deleted
     (codeawareness--force-cleanup)))
 
-;; Register cleanup functions to run when Emacs exits
-(add-hook 'kill-emacs-hook #'codeawareness--cleanup-on-exit)
-
-;; Add a function to handle the specific case where we're about to exit
-(defun codeawareness--handle-exit-request ()
-  "Handle exit requests by cleaning up before Emacs checks for active processes."
-  (interactive)
-  (when codeawareness-mode
-    (codeawareness-log-info "Code Awareness: Exit request received, cleaning up")
-    (codeawareness--send-disconnect-messages)
-    (codeawareness--force-cleanup)))
 
 (defun codeawareness--buffer-list-update-hook ()
   "Hook function for buffer-list-update-hook to detect when buffers are displayed."
@@ -1334,8 +1210,7 @@ Returns a list of highlight alists with 'line and 'type keys."
 ;;; Minor Mode
 
 (define-minor-mode codeawareness-mode
-  "Toggle Code Awareness mode.
-Enable Code Awareness functionality for collaborative development."
+  "Toggle Code Awareness mode. Enable Code Awareness functionality for collaborative development."
   :init-value nil
   :global t
   :lighter " CAW"
@@ -1401,14 +1276,8 @@ Enable Code Awareness functionality for collaborative development."
 ;; Register cleanup functions to run when Emacs exits
 (add-hook 'kill-emacs-hook #'codeawareness--cleanup-on-exit)
 
-;; Add a function to handle the specific case where we're about to exit
-(defun codeawareness--handle-exit-request ()
-  "Handle exit requests by cleaning up before Emacs checks for active processes."
-  (interactive)
-  (when codeawareness-mode
-    (codeawareness-log-info "Code Awareness: Exit request received, cleaning up")
-    (codeawareness--send-disconnect-messages)
-    (codeawareness--force-cleanup)))
+;; Register cleanup functions to run when Emacs exits
+(add-hook 'kill-emacs-hook #'codeawareness--cleanup-on-exit)
 
 ;;; Provide
 
