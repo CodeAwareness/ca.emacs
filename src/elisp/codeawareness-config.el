@@ -72,6 +72,14 @@
   :type 'boolean
   :group 'codeawareness-config)
 
+(defcustom codeawareness-use-hl-line-mode t
+  "Whether to use hl-line mode for highlighting instead of custom overlays.
+When enabled, Code Awareness will use hl-line mode which provides better
+support for empty lines and integrates with Emacs' built-in highlighting system.
+When disabled, uses the improved overlay method that also handles empty lines properly."
+  :type 'boolean
+  :group 'codeawareness-config)
+
 (defcustom codeawareness-update-delay 0.5
   "Delay in seconds before running a Code Awareness update."
   :type 'number

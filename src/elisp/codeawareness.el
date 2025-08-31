@@ -33,6 +33,7 @@
 (require 'cl-lib)
 (require 'codeawareness-config)
 (require 'codeawareness-logger)
+(require 'hl-line nil t) ; Optional require for hl-line integration
 
 ;;; Customization
 
@@ -63,6 +64,12 @@
 
 (defvar codeawareness--active-buffer nil
   "Currently active buffer.")
+
+(defvar codeawareness--last-file-buffer nil
+  "Last buffer with a file that was active.")
+
+(defvar codeawareness--pending-hl-data nil
+  "Pending hl data waiting for an active buffer.")
 
 (defvar codeawareness--update-timer nil
   "Timer for debounced updates.")
@@ -115,6 +122,14 @@
 
 (defvar codeawareness--highlight-timer nil
   "Timer for debounced highlight refresh.")
+
+;;; HL-Line Integration
+
+(defvar codeawareness--hl-line-overlays (make-hash-table :test 'equal)
+  "Hash table of hl-line overlays by buffer and line number.")
+
+(defvar codeawareness--hl-line-faces (make-hash-table :test 'equal)
+  "Hash table of custom hl-line faces by highlight type.")
 
 ;;; Configuration
 
@@ -227,7 +242,15 @@
                                 (doc . ,doc)
                                 (caw . ,codeawareness--guid))))
             (codeawareness--transmit "repo:active-path" message-data)
-            (codeawareness--setup-response-handler "code" "repo:active-path")))))))
+            (codeawareness--setup-response-handler "code" "repo:active-path"))))))
+  
+  ;; Apply pending hl data if we have any
+  (when (and codeawareness--pending-hl-data codeawareness--active-buffer (buffer-live-p codeawareness--active-buffer))
+    (codeawareness-log-info "Code Awareness: Applying pending hl data to buffer %s" (buffer-name codeawareness--active-buffer))
+    (let ((highlights (codeawareness--convert-hl-to-highlights codeawareness--pending-hl-data)))
+      (when highlights
+        (codeawareness--apply-highlights-from-data codeawareness--active-buffer highlights)))
+    (setq codeawareness--pending-hl-data nil)))
 
 ;;; Highlighting System
 
@@ -300,6 +323,10 @@
                               :foreground "#2e7d32"
                               :weight 'normal)))))
   
+  ;; Initialize hl-line faces if hl-line is available
+  (when (featurep 'hl-line)
+    (codeawareness--init-hl-line-faces))
+  
   (codeawareness-log-info "Code Awareness: Highlight faces initialized"))
 
 (defun codeawareness--get-highlight-face (type)
@@ -307,37 +334,20 @@
   (alist-get type codeawareness--highlight-faces))
 
 (defun codeawareness--create-line-overlay (buffer line-number face &optional properties)
-  "Create an overlay for a specific line in the given buffer."
+  "Create an overlay for a specific line in the given buffer.
+Uses hl-line technique to properly handle empty lines."
   (when (and buffer (buffer-live-p buffer))
     (with-current-buffer buffer
       (let* ((line-count (line-number-at-pos (point-max)))
              (start (line-beginning-position line-number))
-             (end (line-end-position line-number)))
+             ;; Use hl-line technique: end at start of next line instead of end of current line
+             ;; This ensures empty lines get proper overlay span
+             (end (line-beginning-position (1+ line-number))))
         (when (and (<= line-number line-count) (>= line-number 1))
           (let ((overlay (make-overlay start end buffer t nil)))
             (overlay-put overlay 'face face)
             (overlay-put overlay 'codeawareness-type 'line-highlight)
             (overlay-put overlay 'codeawareness-line line-number)
-            ;; Add any additional properties
-            (when properties
-              (dolist (prop properties)
-                (overlay-put overlay (car prop) (cdr prop))))
-            overlay))))))
-
-(defun codeawareness--create-full-width-overlay (buffer line-number face &optional properties)
-  "Create a full-width overlay for a specific line in the given buffer.
-This extends the highlight to the full width of the window."
-  (when (and buffer (buffer-live-p buffer))
-    (with-current-buffer buffer
-      (let* ((line-count (line-number-at-pos (point-max)))
-             (start (line-beginning-position line-number))
-             (end (line-end-position line-number)))
-        (when (and (<= line-number line-count) (>= line-number 1))
-          (let ((overlay (make-overlay start end buffer t nil)))
-            (overlay-put overlay 'face face)
-            (overlay-put overlay 'codeawareness-type 'line-highlight)
-            (overlay-put overlay 'codeawareness-line line-number)
-            (overlay-put overlay 'evaporate t)
             ;; Add any additional properties
             (when properties
               (dolist (prop properties)
@@ -353,6 +363,9 @@ This extends the highlight to the full width of the window."
           (delete-overlay overlay))))
     ;; Remove from highlights hash table
     (remhash buffer codeawareness--highlights)
+    ;; Also clear hl-line highlights if using that mode
+    (when (and codeawareness-use-hl-line-mode (featurep 'hl-line))
+      (codeawareness--clear-buffer-hl-line-highlights buffer))
     (codeawareness-log-info "Code Awareness: Cleared highlights for buffer %s" buffer)))
 
 (defun codeawareness--clear-all-highlights ()
@@ -360,15 +373,18 @@ This extends the highlight to the full width of the window."
   (dolist (buffer (buffer-list))
     (codeawareness--clear-buffer-highlights buffer))
   (clrhash codeawareness--highlights)
+  ;; Also clear hl-line highlights if using that mode
+  (when (and codeawareness-use-hl-line-mode (featurep 'hl-line))
+    (dolist (buffer (buffer-list))
+      (codeawareness--clear-buffer-hl-line-highlights buffer))
+    (clrhash codeawareness--hl-line-overlays))
   (codeawareness-log-info "Code Awareness: Cleared all highlights"))
 
 (defun codeawareness--add-highlight (buffer line-number type &optional properties)
   "Add a highlight to the specified line in the given buffer."
   (when (and buffer line-number type)
     (let* ((face (codeawareness--get-highlight-face type))
-           (overlay (if codeawareness-full-width-highlights
-                        (codeawareness--create-full-width-overlay buffer line-number face properties)
-                      (codeawareness--create-line-overlay buffer line-number face properties))))
+           (overlay (codeawareness--create-line-overlay buffer line-number face properties)))
       (when overlay
         ;; Store highlight information
         (let ((buffer-highlights (gethash buffer codeawareness--highlights)))
@@ -395,7 +411,7 @@ This extends the highlight to the full width of the window."
       (when buffer-highlights
         (codeawareness-log-info "Code Awareness: Refreshing highlights for buffer %s" buffer)
         ;; Clear existing overlays
-        (codeawareness--clear-buffer-highlights buffer)
+        ;; (codeawareness--clear-buffer-highlights buffer)
         ;; Recreate highlights from stored data
         (maphash (lambda (line-number highlight-data)
                    (let ((type (overlay-get highlight-data 'codeawareness-highlight-type))
@@ -414,16 +430,24 @@ This extends the highlight to the full width of the window."
 (defun codeawareness--apply-highlights-from-data (buffer highlight-data)
   "Apply highlights to buffer based on data from the local service."
   (when (and buffer (buffer-live-p buffer) highlight-data)
-    ;; Clear existing highlights first
-    (codeawareness--clear-buffer-highlights buffer)
-    
-    ;; Apply new highlights
-    (dolist (highlight highlight-data)
-      (let ((line (alist-get 'line highlight))
-            (type (alist-get 'type highlight))
-            (properties (alist-get 'properties highlight)))
-        (when (and line type)
-          (codeawareness--add-highlight buffer line type properties))))))
+    (codeawareness-log-info "Code Awareness: Applying highlights to buffer %s, data: %s" 
+                            (buffer-name buffer) highlight-data)
+    ;; Use hl-line mode if configured, otherwise use custom overlays
+    (if (and codeawareness-use-hl-line-mode (featurep 'hl-line))
+        (progn
+          (codeawareness-log-info "Code Awareness: Using hl-line mode for highlighting")
+          (codeawareness--apply-hl-line-highlights-from-data buffer highlight-data))
+      (codeawareness-log-info "Code Awareness: Using custom overlay mode for highlighting")
+      ;; Clear existing highlights first
+      ;; (codeawareness--clear-buffer-highlights buffer)
+      
+      ;; Apply new highlights
+      (dolist (highlight highlight-data)
+        (let ((line (alist-get 'line highlight))
+              (type (alist-get 'type highlight))
+              (properties (alist-get 'properties highlight)))
+          (when (and line type)
+            (codeawareness--add-highlight buffer line type properties)))))))
 
 (defun codeawareness--convert-agg-to-highlights (agg-data)
   "Convert agg data structure to highlight format.
@@ -466,6 +490,94 @@ Returns a list of highlight alists with 'line and 'type keys."
                     (properties . ((source . hl))))
                   highlights)))))
     highlights))
+
+;;; HL-Line Integration Functions
+
+(defun codeawareness--init-hl-line-faces ()
+  "Initialize hl-line faces for different highlight types."
+  (when (featurep 'hl-line)
+    (setq codeawareness--hl-line-faces
+          `((conflict . ,(make-face 'codeawareness-hl-line-conflict))
+            (overlap . ,(make-face 'codeawareness-hl-line-overlap))
+            (peer . ,(make-face 'codeawareness-hl-line-peer))
+            (modified . ,(make-face 'codeawareness-hl-line-modified))))
+    ;; Set face properties based on theme
+    (let ((conflict-face (alist-get 'conflict codeawareness--hl-line-faces))
+          (overlap-face (alist-get 'overlap codeawareness--hl-line-faces))
+          (peer-face (alist-get 'peer codeawareness--hl-line-faces))
+          (modified-face (alist-get 'modified codeawareness--hl-line-faces)))
+      (if (eq (frame-parameter nil 'background-mode) 'dark)
+          ;; Dark theme colors - more prominent
+          (progn
+            (set-face-attribute conflict-face nil :background "#ff0000" :foreground "#ffffff" :extend t)
+            (set-face-attribute overlap-face nil :background "#ff8800" :foreground "#ffffff" :extend t)
+            (set-face-attribute peer-face nil :background "#0088ff" :foreground "#ffffff" :extend t)
+            (set-face-attribute modified-face nil :background "#00ff00" :foreground "#000000" :extend t))
+        ;; Light theme colors - more prominent
+        (progn
+          (set-face-attribute conflict-face nil :background "#ffcccc" :foreground "#cc0000" :extend t)
+          (set-face-attribute overlap-face nil :background "#ffdd88" :foreground "#884400" :extend t)
+          (set-face-attribute peer-face nil :background "#88ccff" :foreground "#004488" :extend t)
+          (set-face-attribute modified-face nil :background "#88ff88" :foreground "#004400" :extend t))))
+    (codeawareness-log-info "Code Awareness: HL-line faces initialized")))
+
+(defun codeawareness--get-hl-line-face (type)
+  "Get the hl-line face for the given highlight type."
+  (or (alist-get type codeawareness--hl-line-faces)
+      ;; Fallback to default hl-line face if not found
+      'hl-line))
+
+(defun codeawareness--add-hl-line-highlight (buffer line-number type &optional properties)
+  "Add a highlight using hl-line mode to the specified line in the given buffer."
+  (when (and buffer line-number type (featurep 'hl-line))
+    ;; Ensure hl-line faces are initialized
+    (unless codeawareness--hl-line-faces
+      (codeawareness--init-hl-line-faces))
+    (let* ((face (codeawareness--get-hl-line-face type))
+           (overlay (make-overlay (line-beginning-position line-number)
+                                 (line-beginning-position (1+ line-number))
+                                 buffer t nil)))
+      (codeawareness-log-info "Code Awareness: Created hl-line overlay for line %d in buffer %s with face %s" 
+                              line-number (buffer-name buffer) face)
+      (overlay-put overlay 'face face)
+      (overlay-put overlay 'codeawareness-type 'hl-line-highlight)
+      (overlay-put overlay 'codeawareness-line line-number)
+      (overlay-put overlay 'codeawareness-highlight-type type)
+      (overlay-put overlay 'codeawareness-properties properties)
+      ;; Store highlight information
+      (let ((buffer-highlights (gethash buffer codeawareness--hl-line-overlays)))
+        (unless buffer-highlights
+          (setq buffer-highlights (make-hash-table :test 'equal))
+          (puthash buffer buffer-highlights codeawareness--hl-line-overlays))
+        (puthash line-number overlay buffer-highlights))
+      overlay)))
+
+(defun codeawareness--clear-buffer-hl-line-highlights (buffer)
+  "Clear all Code Awareness hl-line highlights from the given buffer."
+  (when (and buffer (buffer-live-p buffer))
+    (with-current-buffer buffer
+      (dolist (overlay (overlays-in (point-min) (point-max)))
+        (when (eq (overlay-get overlay 'codeawareness-type) 'hl-line-highlight)
+          (delete-overlay overlay))))
+    ;; Remove from highlights hash table
+    (remhash buffer codeawareness--hl-line-overlays)
+    (codeawareness-log-info "Code Awareness: Cleared hl-line highlights for buffer %s" buffer)))
+
+(defun codeawareness--apply-hl-line-highlights-from-data (buffer highlight-data)
+  "Apply hl-line highlights to buffer based on data from the local service."
+  (when (and buffer (buffer-live-p buffer) highlight-data (featurep 'hl-line))
+    (codeawareness-log-info "Code Awareness: Applying hl-line highlights to buffer %s, count: %d" 
+                            (buffer-name buffer) (length highlight-data))
+    ;; Clear existing highlights first
+    (codeawareness--clear-buffer-hl-line-highlights buffer)
+    ;; Apply new highlights
+    (dolist (highlight highlight-data)
+      (let ((line (alist-get 'line highlight))
+            (type (alist-get 'type highlight))
+            (properties (alist-get 'properties highlight)))
+        (when (and line type)
+          (codeawareness-log-info "Code Awareness: Adding hl-line highlight for line %d, type %s" line type)
+          (codeawareness--add-hl-line-highlight buffer line type properties))))))
 
 ;;; IPC Communication
 
@@ -587,13 +699,22 @@ Returns a list of highlight alists with 'line and 'type keys."
   (codeawareness--add-project data)
   ;; Extract and apply highlights from the hl data structure
   (let* ((hl-data (alist-get 'hl data))
-         (buffer codeawareness--active-buffer))
-    (when (and hl-data buffer (buffer-live-p buffer))
-      ;; Convert hl data to highlight format
-      (let ((highlights (codeawareness--convert-hl-to-highlights hl-data)))
-        (when highlights
-          (codeawareness--apply-highlights-from-data buffer highlights))))
-  (codeawareness-log-info "Code Awareness: Project added successfully")))
+         (buffer (or codeawareness--active-buffer codeawareness--last-file-buffer)))
+    (codeawareness-log-info "Code Awareness: hl-data: %s, buffer: %s" hl-data (if buffer (buffer-name buffer) "nil"))
+    (if (and hl-data buffer (buffer-live-p buffer))
+        ;; Apply highlights immediately if we have an active buffer
+        (progn
+          (codeawareness-log-info "Code Awareness: Applying highlights to buffer %s" (buffer-name buffer))
+          ;; Convert hl data to highlight format
+          (let ((highlights (codeawareness--convert-hl-to-highlights hl-data)))
+            (codeawareness-log-info "Code Awareness: Converted highlights: %s" highlights)
+            (when highlights
+              (codeawareness--apply-highlights-from-data buffer highlights))))
+      ;; Store pending hl data if no active buffer
+      (when hl-data
+        (codeawareness-log-info "Code Awareness: No active buffer, storing pending hl data: %s" hl-data)
+        (setq codeawareness--pending-hl-data hl-data))))
+  (codeawareness-log-info "Code Awareness: Project added successfully"))
 
 (defun codeawareness--handle-auth-info-response (data)
   "Handle response from auth:info request."
@@ -932,6 +1053,7 @@ Returns a list of highlight alists with 'line and 'type keys."
   "Set the active buffer for Code Awareness."
   (when (and buffer (buffer-file-name buffer))
     (setq codeawareness--active-buffer buffer)
+    (setq codeawareness--last-file-buffer buffer) ; Update the last file buffer
     (codeawareness--schedule-update)))
 
 (defun codeawareness--schedule-update ()
@@ -967,22 +1089,33 @@ Returns a list of highlight alists with 'line and 'type keys."
   (let ((current-buffer (current-buffer)))
     (when (and current-buffer
                (not (eq current-buffer codeawareness--active-buffer)))
-      ;; Clear highlights from the previous active buffer
-      (when (and codeawareness--active-buffer 
-                 (buffer-live-p codeawareness--active-buffer))
-        (codeawareness-log-info "Code Awareness: Clearing highlights from previous buffer %s" 
-                                (buffer-name codeawareness--active-buffer))
-        (codeawareness--clear-buffer-highlights codeawareness--active-buffer))
+      (codeawareness-log-info "Code Awareness: Buffer switch detected: %s -> %s (has-file: %s)" 
+                              (if codeawareness--active-buffer (buffer-name codeawareness--active-buffer) "nil")
+                              (buffer-name current-buffer)
+                              (if (buffer-file-name current-buffer) "yes" "no"))
+      ;; (when (and codeawareness--active-buffer 
+      ;;           (buffer-live-p codeawareness--active-buffer))
+      ;;  (codeawareness-log-info "Code Awareness: Clearing highlights from previous buffer %s (switching to: %s)" 
+      ;;                          (buffer-name codeawareness--active-buffer) (buffer-name current-buffer))
+      ;;  (codeawareness--clear-buffer-highlights codeawareness--active-buffer))
       
       (if (buffer-file-name current-buffer)
           ;; Set the active buffer and refresh immediately (like VS Code's onDidChangeActiveTextEditor)
           (progn
             (codeawareness-log-info "Code Awareness: Active buffer changed to %s" (buffer-file-name current-buffer))
+            ;; Clear last hl data if switching to a different file
+            (when (and codeawareness--active-buffer 
+                       (buffer-file-name codeawareness--active-buffer)
+                       (not (string= (buffer-file-name codeawareness--active-buffer) 
+                                     (buffer-file-name current-buffer))))
+              (codeawareness-log-info "Code Awareness: Switching to different file"))
             (setq codeawareness--active-buffer current-buffer)
+            (setq codeawareness--last-file-buffer current-buffer) ; Update the last file buffer
             (codeawareness--refresh-active-file))
         ;; Clear active buffer if switching to a buffer without a file
         (codeawareness-log-info "Code Awareness: Switched to buffer without file, clearing active buffer")
-        (setq codeawareness--active-buffer nil)))))
+        (setq codeawareness--active-buffer nil)
+        (setq codeawareness--last-file-buffer nil)))))
 
 ;;; Public API
 
@@ -1079,6 +1212,91 @@ Returns a list of highlight alists with 'line and 'type keys."
   (codeawareness--send-disconnect-messages)
   (message "Code Awareness: Disconnect messages sent"))
 
+(defun codeawareness-test-empty-line-highlighting ()
+  "Test highlighting of empty lines to demonstrate the fix."
+  (interactive)
+  ;; Ensure hl-line faces are initialized
+  (when (featurep 'hl-line)
+    (codeawareness--init-hl-line-faces))
+  (let ((test-data '(((line . 1) (type . modified) (properties . ((test . t))))
+                     ((line . 3) (type . conflict) (properties . ((test . t))))
+                     ((line . 5) (type . peer) (properties . ((test . t))))
+                     ((line . 7) (type . overlap) (properties . ((test . t)))))))
+    (message "Code Awareness: Testing empty line highlighting...")
+    (codeawareness--apply-highlights-from-data (current-buffer) test-data)
+    (message "Code Awareness: Applied test highlights to lines 1, 3, 5, 7 (including empty lines)")))
+
+(defun codeawareness-test-json-hl-data ()
+  "Test highlighting using simulated JSON hl data (0-based line numbers)."
+  (interactive)
+  ;; Ensure hl-line faces are initialized
+  (when (featurep 'hl-line)
+    (codeawareness--init-hl-line-faces))
+  ;; Simulate JSON hl data with 0-based line numbers (like from local service)
+  (let ((json-hl-data [0 2 4 6])) ; 0-based line numbers
+    (message "Code Awareness: Testing JSON hl data: %s" json-hl-data)
+    ;; Convert to highlight format (like the actual flow)
+    (let ((highlights (codeawareness--convert-hl-to-highlights json-hl-data)))
+      (message "Code Awareness: Converted to highlights: %s" highlights)
+      ;; Apply highlights using the same pipeline as real JSON data
+      (codeawareness--apply-highlights-from-data (current-buffer) highlights)
+      (message "Code Awareness: Applied JSON hl highlights to lines 1, 3, 5, 7 (0-based: 0, 2, 4, 6)"))))
+
+(defun codeawareness-debug-buffers ()
+  "Show debug information about current buffer state."
+  (interactive)
+  (message "Code Awareness Buffer Debug: Active: %s, Last File: %s, Current: %s, Current File: %s"
+           (if codeawareness--active-buffer (buffer-name codeawareness--active-buffer) "nil")
+           (if codeawareness--last-file-buffer (buffer-name codeawareness--last-file-buffer) "nil")
+           (buffer-name (current-buffer))
+           (if (buffer-file-name (current-buffer)) (buffer-file-name (current-buffer)) "nil")))
+
+(defun codeawareness-test-hl-line-faces ()
+  "Test if hl-line faces are working correctly."
+  (interactive)
+  ;; Ensure hl-line faces are initialized
+  (when (featurep 'hl-line)
+    (codeawareness--init-hl-line-faces))
+  ;; Test with a simple overlay using the modified face
+  (let* ((face (codeawareness--get-hl-line-face 'modified))
+         (overlay (make-overlay (line-beginning-position 1)
+                               (line-beginning-position 2)
+                               (current-buffer) t nil)))
+    (overlay-put overlay 'face face)
+    (overlay-put overlay 'codeawareness-type 'test)
+    (message "Code Awareness: Test overlay created with face %s on line 1" face)
+    ;; Remove the test overlay after 3 seconds
+    (run-with-timer 3.0 nil (lambda () (delete-overlay overlay)))))
+
+(defun codeawareness-test-face-colors ()
+  "Test all hl-line face colors to see if they're visible."
+  (interactive)
+  ;; Ensure hl-line faces are initialized
+  (when (featurep 'hl-line)
+    (codeawareness--init-hl-line-faces))
+  ;; Test each face type
+  (dolist (type '(modified conflict peer overlap))
+    (let* ((face (codeawareness--get-hl-line-face type))
+           (line (+ 2 (cl-position type '(modified conflict peer overlap))))
+           (overlay (make-overlay (line-beginning-position line)
+                                 (line-beginning-position (1+ line))
+                                 (current-buffer) t nil)))
+      (overlay-put overlay 'face face)
+      (overlay-put overlay 'codeawareness-type 'test)
+      (message "Code Awareness: Test overlay for %s face on line %d" type line)
+      ;; Remove the test overlay after 5 seconds
+      (run-with-timer 5.0 nil (lambda () (delete-overlay overlay))))))
+
+;;; Reinit on Emacs restart
+
+(defun codeawareness-reinit-faces ()
+  "Force reinitialize hl-line faces."
+  (interactive)
+  (when (featurep 'hl-line)
+    (setq codeawareness--hl-line-faces nil) ; Clear existing faces
+    (codeawareness--init-hl-line-faces)
+    (message "Code Awareness: HL-line faces reinitialized")))
+
 ;;; Cleanup on Emacs exit
 
 (defun codeawareness--cleanup-on-exit ()
@@ -1102,6 +1320,17 @@ Returns a list of highlight alists with 'line and 'type keys."
     (codeawareness--send-disconnect-messages)
     (codeawareness--force-cleanup)))
 
+(defun codeawareness--buffer-list-update-hook ()
+  "Hook function for buffer-list-update-hook to detect when buffers are displayed."
+  (let ((current-buffer (current-buffer)))
+    (when (and current-buffer
+               (buffer-file-name current-buffer)
+               (not (eq current-buffer codeawareness--active-buffer)))
+      (codeawareness-log-info "Code Awareness: Buffer displayed: %s" (buffer-file-name current-buffer))
+      (setq codeawareness--active-buffer current-buffer)
+      (setq codeawareness--last-file-buffer current-buffer)
+      (codeawareness--refresh-active-file))))
+
 ;;; Minor Mode
 
 (define-minor-mode codeawareness-mode
@@ -1111,6 +1340,12 @@ Enable Code Awareness functionality for collaborative development."
   :global t
   :lighter " CAW"
   :group 'codeawareness
+  :keymap (let ((map (make-sparse-keymap)))
+            (define-key map (kbd "C-c C-a t") #'codeawareness-toggle)
+            (define-key map (kbd "C-c C-a x") #'codeawareness-disconnect)
+            (define-key map (kbd "C-c C-a f") #'codeawareness-test-face-colors)
+            (define-key map (kbd "C-c C-a l") #'codeawareness-clear-logs)
+            map)
   (if codeawareness-mode
       (codeawareness--enable)
     (codeawareness--disable)))
@@ -1123,6 +1358,7 @@ Enable Code Awareness functionality for collaborative development."
   (codeawareness--init-highlight-faces)
   (add-hook 'after-save-hook #'codeawareness--after-save-hook)
   (add-hook 'post-command-hook #'codeawareness--post-command-hook)
+  (add-hook 'buffer-list-update-hook #'codeawareness--buffer-list-update-hook)
   ;; Set the current buffer as active if it has a file (like VSCode's activeTextEditor)
   (when (and (current-buffer) (buffer-file-name (current-buffer)))
     (setq codeawareness--active-buffer (current-buffer)))
@@ -1131,6 +1367,11 @@ Enable Code Awareness functionality for collaborative development."
 (defun codeawareness--disable ()
   "Disable Code Awareness."
   (codeawareness-log-info "Code Awareness: Disabling and disconnecting")
+
+  ;; Remove hooks
+  (remove-hook 'after-save-hook #'codeawareness--after-save-hook)
+  (remove-hook 'post-command-hook #'codeawareness--post-command-hook)
+  (remove-hook 'buffer-list-update-hook #'codeawareness--buffer-list-update-hook)
 
   ;; Clear all highlights
   (codeawareness--clear-all-highlights)
@@ -1148,27 +1389,26 @@ Enable Code Awareness functionality for collaborative development."
 
 ;;; Cleanup on Emacs exit
 
-(defun codeawareness--pre-exit-cleanup ()
-  "Pre-exit cleanup that runs before Emacs checks for active processes."
+(defun codeawareness--cleanup-on-exit ()
+  "Cleanup Code Awareness when Emacs is about to exit."
   (when codeawareness-mode
-    (codeawareness-log-info "Code Awareness: Pre-exit cleanup triggered")
-    ;; Send disconnect messages first
+    (codeawareness-log-info "Code Awareness: Emacs exiting, cleaning up connections")
+    ;; Send disconnect messages first, then force cleanup
     (codeawareness--send-disconnect-messages)
-    ;; Force cleanup to remove processes before Emacs checks
-    (codeawareness--force-cleanup)
-    ;; Return nil to allow normal exit to continue
-    nil))
+    ;; Force synchronous cleanup to ensure processes are deleted
+    (codeawareness--force-cleanup)))
 
-(defun codeawareness--buffer-kill-cleanup ()
-  "Cleanup when the last buffer is being killed (potential exit scenario)."
-  (when (and codeawareness-mode
-             ;; Only trigger if this is the last buffer
-             (= (length (buffer-list)) 1))
-    (codeawareness-log-info "Code Awareness: Last buffer being killed, cleaning up")
+;; Register cleanup functions to run when Emacs exits
+(add-hook 'kill-emacs-hook #'codeawareness--cleanup-on-exit)
+
+;; Add a function to handle the specific case where we're about to exit
+(defun codeawareness--handle-exit-request ()
+  "Handle exit requests by cleaning up before Emacs checks for active processes."
+  (interactive)
+  (when codeawareness-mode
+    (codeawareness-log-info "Code Awareness: Exit request received, cleaning up")
     (codeawareness--send-disconnect-messages)
-    (codeawareness--force-cleanup)
-    ;; Return nil to allow buffer kill to continue
-    nil))
+    (codeawareness--force-cleanup)))
 
 ;;; Provide
 
