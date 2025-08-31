@@ -322,10 +322,15 @@
   (when (and buffer (buffer-live-p buffer))
     (with-current-buffer buffer
       (let* ((line-count (line-number-at-pos (point-max)))
-             (start (line-beginning-position line-number))
+             ;; Use save-excursion to get absolute line positions regardless of cursor position
+             (start (save-excursion
+                      (goto-line line-number)
+                      (line-beginning-position)))
              ;; Use hl-line technique: end at start of next line instead of end of current line
              ;; This ensures empty lines get proper overlay span
-             (end (line-beginning-position (1+ line-number))))
+             (end (save-excursion
+                    (goto-line (1+ line-number))
+                    (line-beginning-position))))
         (when (and (<= line-number line-count) (>= line-number 1))
           (let ((overlay (make-overlay start end buffer t nil)))
             (overlay-put overlay 'face face)
@@ -454,13 +459,13 @@
             (set-face-attribute conflict-face nil :background "#ff0000" :foreground "#ffffff" :extend t)
             (set-face-attribute overlap-face nil :background "#ff8800" :foreground "#ffffff" :extend t)
             (set-face-attribute peer-face nil :background "#0088ff" :foreground "#ffffff" :extend t)
-            (set-face-attribute modified-face nil :background "#00ff00" :foreground "#000000" :extend t))
+            (set-face-attribute modified-face nil :background "#13547f" :foreground "#ffffff" :extend t))
         ;; Light theme colors - more prominent
         (progn
           (set-face-attribute conflict-face nil :background "#ffcccc" :foreground "#cc0000" :extend t)
           (set-face-attribute overlap-face nil :background "#ffdd88" :foreground "#884400" :extend t)
           (set-face-attribute peer-face nil :background "#88ccff" :foreground "#004488" :extend t)
-          (set-face-attribute modified-face nil :background "#88ff88" :foreground "#004400" :extend t))))
+          (set-face-attribute modified-face nil :background "#a0e1a4" :foreground "#004400" :extend t))))
     (codeawareness-log-info "HL-line faces initialized")))
 
 (defun codeawareness--get-hl-line-face (type)
@@ -476,9 +481,15 @@
     (unless codeawareness--hl-line-faces
       (codeawareness--init-hl-line-faces))
     (let* ((face (codeawareness--get-hl-line-face type))
-           (overlay (make-overlay (line-beginning-position line-number)
-                                  (line-beginning-position (1+ line-number))
-                                  buffer t nil)))
+           ;; Use save-excursion to get absolute line positions regardless of cursor position
+           (overlay (with-current-buffer buffer
+                      (make-overlay (save-excursion
+                                      (goto-line line-number)
+                                      (line-beginning-position))
+                                    (save-excursion
+                                      (goto-line (1+ line-number))
+                                      (line-beginning-position))
+                                    buffer t nil))))
       (codeawareness-log-info "Created hl-line overlay for line %d in buffer %s with face %s"
                               line-number (buffer-name buffer) face)
       (overlay-put overlay 'face face)
@@ -519,7 +530,7 @@
             (properties (alist-get 'properties highlight)))
         (when (and line type)
           (codeawareness-log-info "Adding hl-line highlight for line %d, type %s" line type)
-          (codeawareness--add-hl-line-highlight buffer line type properties))))))
+          (run-with-timer 1.0 nil (codeawareness--add-hl-line-highlight buffer line type properties)))))))
 
 ;;; IPC Communication
 
