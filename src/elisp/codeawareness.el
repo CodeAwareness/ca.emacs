@@ -136,7 +136,7 @@
         `((catalog . ,codeawareness-catalog)
           (highlight-while-closed . ,codeawareness-highlight-while-closed)
           (update-delay . ,codeawareness-update-delay)))
-  (codeawareness-log-info "Code Awareness: Configuration initialized"))
+  (codeawareness-log-info "Configuration initialized"))
 
 (defun codeawareness--init-store ()
   "Initialize the central store."
@@ -151,11 +151,11 @@
           (peer-fs . ,codeawareness--peer-fs)
           (user . ,codeawareness--user)
           (tokens . ,codeawareness--tokens)))
-  (codeawareness-log-info "Code Awareness: Store initialized"))
+  (codeawareness-log-info "Store initialized"))
 
 (defun codeawareness--clear-store ()
   "Clear the store and reset all state."
-  (codeawareness-log-info "Code Awareness: Clearing store")
+  (codeawareness-log-info "Clearing store")
   (setq codeawareness--tokens nil
         codeawareness--user nil
         codeawareness--authenticated nil
@@ -171,7 +171,7 @@
 
 (defun codeawareness--reset-store ()
   "Reset store state (keep user/tokens)."
-  (codeawareness-log-info "Code Awareness: Resetting store")
+  (codeawareness-log-info "Resetting store")
   (setq codeawareness--peer-fs (make-hash-table :test 'equal)
         codeawareness--active-buffer nil
         codeawareness--active-selections nil)
@@ -181,7 +181,7 @@
 
 (defun codeawareness--add-project (project)
   "Add a project to the store."
-  (codeawareness-log-info "Code Awareness: Adding project %s" (alist-get 'root project))
+  (codeawareness-log-info "Adding project %s" (alist-get 'root project))
   (setq codeawareness--active-project project)
   ;; Add to projects list if not already present
   (unless (cl-find (alist-get 'root project) codeawareness--projects
@@ -218,23 +218,18 @@
 
 (defun codeawareness--refresh-active-file ()
   "Refresh the currently active file by sending repo:active-path message."
-  (codeawareness-log-info "Code Awareness: refreshActiveFile hook called")
-  (codeawareness-log-info "Code Awareness: Authentication status: %s" (if codeawareness--authenticated "yes" "no"))
-  (codeawareness-log-info "Code Awareness: IPC process exists: %s" (if codeawareness--ipc-process "yes" "no"))
-  (when codeawareness--ipc-process
-    (codeawareness-log-info "Code Awareness: IPC process status: %s" (process-status codeawareness--ipc-process)))
 
   ;; Check if we have the necessary components to send a refresh request
   (let ((fpath (codeawareness--get-active-file-path))
         (doc (codeawareness--get-active-file-content)))
     (if (not fpath)
-        (codeawareness-log-info "Code Awareness: No active file to refresh")
+        (codeawareness-log-info "No active file to refresh")
       (if (not codeawareness--authenticated)
-          (codeawareness-log-warn "Code Awareness: Not authenticated, skipping file refresh")
+          (codeawareness-log-warn "Not authenticated, skipping file refresh")
         (if (not (and codeawareness--ipc-process
                       (eq (process-status codeawareness--ipc-process) 'open)))
-            (codeawareness-log-warn "Code Awareness: IPC process not ready, skipping file refresh")
-          (codeawareness-log-info "Code Awareness: Refreshing active file %s" fpath)
+            (codeawareness-log-warn "IPC process not ready, skipping file refresh")
+          (codeawareness-log-info "Refreshing active file %s" fpath)
           (let ((message-data `((fpath . ,(codeawareness--cross-platform-path fpath))
                                 (doc . ,doc)
                                 (caw . ,codeawareness--guid))))
@@ -316,7 +311,7 @@
   (when (featurep 'hl-line)
     (codeawareness--init-hl-line-faces))
 
-  (codeawareness-log-info "Code Awareness: Highlight faces initialized"))
+  (codeawareness-log-info "Highlight faces initialized"))
 
 (defun codeawareness--get-highlight-face (type)
   "Get the face for the given highlight type."
@@ -354,7 +349,7 @@
     ;; Also clear hl-line highlights if using that mode
     (when (and codeawareness-use-hl-line-mode (featurep 'hl-line))
       (codeawareness--clear-buffer-hl-line-highlights buffer))
-    (codeawareness-log-info "Code Awareness: Cleared highlights for buffer %s" buffer)))
+    (codeawareness-log-info "Cleared highlights for buffer %s" buffer)))
 
 (defun codeawareness--clear-all-highlights ()
   "Clear all Code Awareness highlights from all buffers."
@@ -366,7 +361,7 @@
     (dolist (buffer (buffer-list))
       (codeawareness--clear-buffer-hl-line-highlights buffer))
     (clrhash codeawareness--hl-line-overlays))
-  (codeawareness-log-info "Code Awareness: Cleared all highlights"))
+  (codeawareness-log-info "Cleared all highlights"))
 
 (defun codeawareness--add-highlight (buffer line-number type &optional properties)
   "Add a highlight to the specified line in the given buffer."
@@ -387,7 +382,7 @@
   (when (and buffer (buffer-live-p buffer))
     (let ((buffer-highlights (gethash buffer codeawareness--highlights)))
       (when buffer-highlights
-        (codeawareness-log-info "Code Awareness: Refreshing highlights for buffer %s" buffer)
+        (codeawareness-log-info "Refreshing highlights for buffer %s" buffer)
         ;; Clear existing overlays
         ;; (codeawareness--clear-buffer-highlights buffer)
         ;; Recreate highlights from stored data
@@ -401,14 +396,14 @@
 (defun codeawareness--apply-highlights-from-data (buffer highlight-data)
   "Apply highlights to buffer based on data from the local service."
   (when (and buffer (buffer-live-p buffer) highlight-data)
-    (codeawareness-log-info "Code Awareness: Applying highlights to buffer %s, data: %s"
+    (codeawareness-log-info "Highlights for %s, data: %s"
                             (buffer-name buffer) highlight-data)
     ;; Use hl-line mode if configured, otherwise use custom overlays
     (if (and codeawareness-use-hl-line-mode (featurep 'hl-line))
         (progn
-          (codeawareness-log-info "Code Awareness: Using hl-line mode for highlighting")
+          (codeawareness-log-info "Using hl-line mode for highlighting")
           (codeawareness--apply-hl-line-highlights-from-data buffer highlight-data))
-      (codeawareness-log-info "Code Awareness: Using custom overlay mode for highlighting")
+      (codeawareness-log-info "Using custom overlay mode for highlighting")
       ;; Clear existing highlights first
       ;; (codeawareness--clear-buffer-highlights buffer)
 
@@ -466,7 +461,7 @@
           (set-face-attribute overlap-face nil :background "#ffdd88" :foreground "#884400" :extend t)
           (set-face-attribute peer-face nil :background "#88ccff" :foreground "#004488" :extend t)
           (set-face-attribute modified-face nil :background "#88ff88" :foreground "#004400" :extend t))))
-    (codeawareness-log-info "Code Awareness: HL-line faces initialized")))
+    (codeawareness-log-info "HL-line faces initialized")))
 
 (defun codeawareness--get-hl-line-face (type)
   "Get the hl-line face for the given highlight type."
@@ -484,7 +479,7 @@
            (overlay (make-overlay (line-beginning-position line-number)
                                   (line-beginning-position (1+ line-number))
                                   buffer t nil)))
-      (codeawareness-log-info "Code Awareness: Created hl-line overlay for line %d in buffer %s with face %s"
+      (codeawareness-log-info "Created hl-line overlay for line %d in buffer %s with face %s"
                               line-number (buffer-name buffer) face)
       (overlay-put overlay 'face face)
       (overlay-put overlay 'codeawareness-type 'hl-line-highlight)
@@ -508,22 +503,22 @@
           (delete-overlay overlay))))
     ;; Remove from highlights hash table
     (remhash buffer codeawareness--hl-line-overlays)
-    (codeawareness-log-info "Code Awareness: Cleared hl-line highlights for buffer %s" buffer)))
+    (codeawareness-log-info "Cleared hl-line highlights for buffer %s" buffer)))
 
 (defun codeawareness--apply-hl-line-highlights-from-data (buffer highlight-data)
   "Apply hl-line highlights to buffer based on data from the local service."
   (when (and buffer (buffer-live-p buffer) highlight-data (featurep 'hl-line))
-    (codeawareness-log-info "Code Awareness: Applying hl-line highlights to buffer %s, count: %d"
-                            (buffer-name buffer) (length highlight-data))
     ;; Clear existing highlights first
     (codeawareness--clear-buffer-hl-line-highlights buffer)
+    (codeawareness-log-info "Applying hl-line highlights to buffer %s, count: %d"
+                            (buffer-name buffer) (length highlight-data))
     ;; Apply new highlights
     (dolist (highlight highlight-data)
       (let ((line (alist-get 'line highlight))
             (type (alist-get 'type highlight))
             (properties (alist-get 'properties highlight)))
         (when (and line type)
-          (codeawareness-log-info "Code Awareness: Adding hl-line highlight for line %d, type %s" line type)
+          (codeawareness-log-info "Adding hl-line highlight for line %d, type %s" line type)
           (codeawareness--add-hl-line-highlight buffer line type properties))))))
 
 ;;; IPC Communication
@@ -547,29 +542,29 @@
   (codeawareness-log-info "Code Awareness IPC: %s" event)
   (cond
    ((string-match "failed" event)
-    (codeawareness-log-error "Code Awareness: Local service connection failed")
+    (codeawareness-log-error "Local service connection failed")
     (setq codeawareness--connected nil)
     ;; Retry connection
     (run-with-timer 2.0 nil #'codeawareness--connect-to-local-service))
    ((string-match "exited" event)
-    (codeawareness-log-warn "Code Awareness: Local service connection closed")
+    (codeawareness-log-warn "Local service connection closed")
     (setq codeawareness--connected nil))
    ((string-match "connection broken by remote peer" event)
-    (codeawareness-log-warn "Code Awareness: Local service rejected connection")
+    (codeawareness-log-warn "Local service rejected connection")
     (setq codeawareness--connected nil)
     ;; Retry connection after a delay
     (run-with-timer 2.0 nil #'codeawareness--connect-to-local-service))
    ((string-match "open" event)
-    (codeawareness-log-info "Code Awareness: Successfully connected to local service")
+    (codeawareness-log-info "Successfully connected to local service")
     (setq codeawareness--connected t)
     ;; Initialize workspace after connection (like VS Code)
     (codeawareness--init-workspace))
    (t
-    (codeawareness-log-warn "Code Awareness: Unknown IPC sentinel event: %s" event))))
+    (codeawareness-log-warn "Unknown IPC sentinel event: %s" event))))
 
 (defun codeawareness--ipc-filter (process data)
   "Handle IPC process data."
-  ;;(codeawareness-log-info "Code Awareness: Received IPC data: %s" data)
+  ;;(codeawareness-log-info "Received IPC data: %s" data)
   (let ((buffer (process-buffer process)))
     (when buffer
       (with-current-buffer buffer
@@ -599,19 +594,19 @@
              (response-data (alist-get 'data data))
              (error-data (alist-get 'err data))
              (caw (alist-get 'caw data)))
-        (codeawareness-log-info "Code Awareness: %s:%s" domain action)
-        ;; (codeawareness-log-info "Code Awareness: Raw message: %S" message)
-        ;; (codeawareness-log-info "Code Awareness: Parsed data: %S" data)
-        ;; (codeawareness-log-info "Code Awareness: Response data: %S" response-data)
+        (codeawareness-log-info "%s:%s" domain action)
+        ;; (codeawareness-log-info "Raw message: %S" message)
+        ;; (codeawareness-log-info "Parsed data: %S" data)
+        ;; (codeawareness-log-info "Response data: %S" response-data)
         (if (and (string= flow "res") action)
             (codeawareness--handle-response domain action response-data)
           (if (and (string= flow "err") action)
               (codeawareness--handle-error domain action error-data)
             (if (and (string= flow "req") action)
-                (codeawareness-log-info "Code Awareness: Received request (not handling): %s:%s" domain action)
-              (codeawareness-log-warn "Code Awareness: Unknown message format: %s" message)))))
+                (codeawareness-log-info "Received request (not handling): %s:%s" domain action)
+              (codeawareness-log-warn "Unknown message format: %s" message)))))
     (error
-     (codeawareness-log-error "Code Awareness: Error parsing IPC message: %s" err))))
+     (codeawareness-log-error "Error parsing IPC message: %s" err))))
 
 (defun codeawareness--handle-response (domain action data)
   "Handle an IPC response."
@@ -628,13 +623,13 @@
 (defun codeawareness--handle-repo-active-path-response (data &optional expected-file-path)
   "Handle response from repo:active-path request.
 EXPECTED-FILE-PATH is the file path that was originally requested (for validation)."
-  (codeawareness-log-info "Code Awareness: Received repo:active-path response")
+  (codeawareness-log-info "Received repo:active-path response")
   ;; Add the project to our store
   (codeawareness--add-project data)
   ;; Extract and apply highlights from the hl data structure
   (let* ((hl-data (alist-get 'hl data))
          (buffer codeawareness--active-buffer))
-    (codeawareness-log-info "Code Awareness: hl-data: %s, buffer: %s" hl-data (if buffer (buffer-name buffer) "nil"))
+    (codeawareness-log-info "hl-data: %s, buffer: %s" hl-data (if buffer (buffer-name buffer) "nil"))
     (if (and hl-data buffer (buffer-live-p buffer))
         ;; Validate that the buffer still corresponds to the expected file
         (let ((current-file-path (buffer-file-name buffer)))
@@ -643,7 +638,7 @@ EXPECTED-FILE-PATH is the file path that was originally requested (for validatio
                             (codeawareness--cross-platform-path current-file-path)))
               ;; File paths match, apply highlights
               (progn
-                (codeawareness-log-info "Code Awareness: Applying highlights to buffer %s (file: %s)"
+                (codeawareness-log-info "Applying highlights to buffer %s (file: %s)"
                                         (buffer-name buffer) current-file-path)
                 ;; Convert hl data to highlight format
                 (let ((highlights (codeawareness--convert-hl-to-highlights hl-data)))
@@ -652,19 +647,19 @@ EXPECTED-FILE-PATH is the file path that was originally requested (for validatio
 
 (defun codeawareness--handle-auth-info-response (data)
   "Handle response from auth:info request."
-  ;;(codeawareness-log-info "Code Awareness: Received auth:info response")
-  ;; (codeawareness-log-info "Code Awareness: Auth data: %S" data)
+  ;;(codeawareness-log-info "Received auth:info response")
+  ;; (codeawareness-log-info "Auth data: %S" data)
   (if (and data (listp data) (alist-get 'user data))
       (progn
         (setq codeawareness--user (alist-get 'user data))
         (setq codeawareness--tokens (alist-get 'tokens data))
         (setq codeawareness--authenticated t)
-        (codeawareness-log-info "Code Awareness: Authentication successful")
-        (message "Code Awareness: Authenticated as %s" (alist-get 'name codeawareness--user))
+        (codeawareness-log-info "Authentication successful")
+        (message "Authenticated as %s" (alist-get 'name codeawareness--user))
         ;; Refresh active file immediately after authentication (like VSCode's init function)
         (codeawareness--refresh-active-file))
     (setq codeawareness--authenticated nil)
-    (codeawareness-log-warn "Code Awareness: No authentication data received - user needs to authenticate")))
+    (codeawareness-log-warn "No authentication data received - user needs to authenticate")))
 
 (defun codeawareness--handle-error (domain action error-data)
   "Handle an IPC error."
@@ -686,12 +681,12 @@ EXPECTED-FILE-PATH is the file path that was originally requested (for validatio
     (if codeawareness--ipc-process
         (if (eq (process-status codeawareness--ipc-process) 'open)
             (progn
-              (codeawareness-log-info "Code Awareness: Sending %s:%s" domain action)
+              (codeawareness-log-info "Sending %s:%s" domain action)
               (process-send-string codeawareness--ipc-process (concat message "\f"))
               (codeawareness--setup-response-handler domain action))
-          (codeawareness-log-error "Code Awareness: IPC process exists but is not open (status: %s)"
+          (codeawareness-log-error "IPC process exists but is not open (status: %s)"
                                    (process-status codeawareness--ipc-process)))
-      (codeawareness-log-error "Code Awareness: No IPC process available for transmission"))))
+      (codeawareness-log-error "No IPC process available for transmission"))))
 
 (defun codeawareness--setup-response-handler (domain action &optional file-path)
   "Setup response handlers for the given domain and action.
@@ -711,18 +706,18 @@ FILE-PATH is the file path associated with this request (for validation)."
 
 (defun codeawareness--handle-success (data)
   "Handle successful IPC response."
-  (codeawareness-log-info "Code Awareness: Success - %s" (format "%s" data)))
+  (codeawareness-log-info "Success - %s" (format "%s" data)))
 
 (defun codeawareness--handle-failure (error-data)
   "Handle failed IPC response."
-  (codeawareness-log-error "Code Awareness: Error - %s" (format "%s" error-data)))
+  (codeawareness-log-error "Error - %s" (format "%s" error-data)))
 
 ;;; Connection Management
 
 (defun codeawareness--init-ipc ()
   "Initialize IPC communication."
   (setq codeawareness--guid (codeawareness--generate-guid))
-  (codeawareness-log-info "Code Awareness: Initializing IPC with GUID %s" (format "%s" codeawareness--guid))
+  (codeawareness-log-info "Initializing IPC with GUID %s" (format "%s" codeawareness--guid))
   (codeawareness--connect-to-catalog))
 
 (defun codeawareness--connect-to-catalog ()
@@ -730,7 +725,7 @@ FILE-PATH is the file path associated with this request (for validation)."
   (let* ((catalog-path (codeawareness--get-catalog-socket-path))
          (process-name "codeawareness-catalog")
          (buffer-name "*codeawareness-catalog*"))
-    (codeawareness-log-info "Code Awareness: Connecting to catalog")
+    (codeawareness-log-info "Connecting to catalog")
     (condition-case err
         (progn
           (setq codeawareness--ipc-catalog-process
@@ -742,13 +737,13 @@ FILE-PATH is the file path associated with this request (for validation)."
                  :sentinel #'codeawareness--catalog-sentinel
                  :filter #'codeawareness--catalog-filter
                  :noquery t))
-          (codeawareness-log-info "Code Awareness: Catalog connection initiated")
+          (codeawareness-log-info "Catalog connection initiated")
           ;; Check process status immediately and after a delay
           (codeawareness--check-catalog-process-status)
           (run-with-timer 0.5 nil #'codeawareness--check-catalog-process-status))
       (error
-       (codeawareness-log-error "Code Awareness: Failed to create catalog connection: %s" err)
-       (message "Code Awareness: Failed to connect to catalog service at %s. Error: %s"
+       (codeawareness-log-error "Failed to create catalog connection: %s" err)
+       (message "Failed to connect to catalog service at %s. Error: %s"
                 catalog-path err)))))
 
 (defun codeawareness--catalog-sentinel (process event)
@@ -757,17 +752,17 @@ FILE-PATH is the file path associated with this request (for validation)."
   (codeawareness-log-info "Code Awareness Catalog: Process: %s" process)
   (cond
    ((string-match "failed" event)
-    (codeawareness-log-error "Code Awareness: Failed to connect to catalog service at %s"
+    (codeawareness-log-error "Failed to connect to catalog service at %s"
                              (codeawareness--get-catalog-socket-path))
-    (message "Code Awareness: Failed to connect to catalog service. Check if the service is running on %s"
+    (message "Failed to connect to catalog service. Check if the service is running on %s"
              (codeawareness--get-catalog-socket-path))
     (setq codeawareness--connected nil))
    ((string-match "exited" event)
-    (codeawareness-log-warn "Code Awareness: Catalog connection closed")
+    (codeawareness-log-warn "Catalog connection closed")
     (setq codeawareness--connected nil))
    ((string-match "open" event)
-    (codeawareness-log-info "Code Awareness: Successfully connected to catalog service")
-    (message "Code Awareness: Connected to catalog service")
+    (codeawareness-log-info "Successfully connected to catalog service")
+    (message "Connected to catalog service")
     (setq codeawareness--connected t)
     ;; Send 'connected' message to trigger client registration (matching VSCode behavior)
     (codeawareness--catalog-filter process "connected"))))
@@ -776,13 +771,13 @@ FILE-PATH is the file path associated with this request (for validation)."
   "Handle catalog process data."
   (codeawareness-log-info "Code Awareness Catalog: Received data: %s" data)
   (when (string= data "connected")
-    (codeawareness-log-info "Code Awareness: Catalog connection established, registering client")
+    (codeawareness-log-info "Catalog connection established, registering client")
     (codeawareness--register-client)))
 
 (defun codeawareness--register-client ()
   "Register this client with the catalog service."
   (when codeawareness--client-registered
-    (codeawareness-log-info "Code Awareness: Client already registered, skipping")
+    (codeawareness-log-info "Client already registered, skipping")
     (return-from codeawareness--register-client))
 
   (let ((message (json-encode `((flow . "req")
@@ -792,29 +787,29 @@ FILE-PATH is the file path associated with this request (for validation)."
                                 (caw . ,codeawareness--guid)))))
     (when codeawareness--ipc-catalog-process
       (process-send-string codeawareness--ipc-catalog-process (concat message "\f"))
-      (codeawareness-log-info "Code Awareness: Client registered")
+      (codeawareness-log-info "Client registered")
       (setq codeawareness--client-registered t)
       (codeawareness--init-server))))
 
 (defun codeawareness--init-server ()
   "Initialize the server connection."
-  (codeawareness-log-info "Code Awareness: Initializing server connection")
+  (codeawareness-log-info "Initializing server connection")
   ;; Start polling for local service socket with exponential backoff
   (codeawareness--poll-for-local-service))
 
 (defun codeawareness--init-workspace ()
   "Initialize workspace."
-  (codeawareness-log-info "Code Awareness: Workspace initialized")
+  (codeawareness-log-info "Workspace initialized")
   ;; Send auth:info request after a short delay to ensure connection is ready
   (run-with-timer 0.1 nil #'codeawareness--send-auth-info))
 
 (defun codeawareness--send-auth-info ()
   "Send auth:info request to the local service."
-  (codeawareness-log-info "Code Awareness: Sending auth:info request")
+  (codeawareness-log-info "Sending auth:info request")
   (if (and codeawareness--ipc-process
            (eq (process-status codeawareness--ipc-process) 'open))
       (codeawareness--transmit "auth:info" nil)
-    (codeawareness-log-error "Code Awareness: IPC process not ready for auth:info request")))
+    (codeawareness-log-error "IPC process not ready for auth:info request")))
 
 (defvar codeawareness--poll-attempts 0
   "Number of polling attempts for local service socket.")
@@ -827,14 +822,14 @@ FILE-PATH is the file path associated with this request (for validation)."
   (let ((socket-path (codeawareness--get-socket-path codeawareness--guid)))
     (if (file-exists-p socket-path)
         (progn
-          (codeawareness-log-info "Code Awareness: Local service socket found")
+          (codeawareness-log-info "Local service socket found")
           (setq codeawareness--poll-attempts 0)
           (codeawareness--connect-to-local-service))
       (if (>= codeawareness--poll-attempts codeawareness--max-poll-attempts)
           (progn
-            (codeawareness-log-error "Code Awareness: Failed to find local service socket after %d attempts"
+            (codeawareness-log-error "Failed to find local service socket after %d attempts"
                                      codeawareness--max-poll-attempts)
-            (message "Code Awareness: Failed to connect to local service after %d attempts"
+            (message "Failed to connect to local service after %d attempts"
                      codeawareness--max-poll-attempts))
         (setq codeawareness--poll-attempts (1+ codeawareness--poll-attempts))
         ;; Exponential backoff: 0.5s, 1s, 2s, 4s, 8s, etc.
@@ -846,13 +841,13 @@ FILE-PATH is the file path associated with this request (for validation)."
   (let* ((socket-path (codeawareness--get-socket-path codeawareness--guid))
          (process-name (format "codeawareness-ipc-%s" codeawareness--guid))
          (buffer-name (format "*%s*" process-name)))
-    (codeawareness-log-info "Code Awareness: Current GUID: %s" codeawareness--guid)
-    (codeawareness-log-info "Code Awareness: Attempting to connect to local service at %s" socket-path)
-    (codeawareness-log-info "Code Awareness: Socket exists: %s" (file-exists-p socket-path))
+    (codeawareness-log-info "Current GUID: %s" codeawareness--guid)
+    (codeawareness-log-info "Attempting to connect to local service at %s" socket-path)
+    (codeawareness-log-info "Socket exists: %s" (file-exists-p socket-path))
 
     (condition-case err
         (progn
-          (codeawareness-log-info "Code Awareness: Creating network process...")
+          (codeawareness-log-info "Creating network process...")
           (setq codeawareness--ipc-process
                 (make-network-process
                  :name process-name
@@ -862,16 +857,16 @@ FILE-PATH is the file path associated with this request (for validation)."
                  :sentinel #'codeawareness--ipc-sentinel
                  :filter #'codeawareness--ipc-filter
                  :noquery t))
-          (codeawareness-log-info "Code Awareness: Connected to local service")
+          (codeawareness-log-info "Connected to local service")
           ;; Set up a timeout to detect stuck connections
           (run-with-timer 5.0 nil #'codeawareness--check-connection-timeout)
           ;; Set up a fallback to trigger workspace init if sentinel doesn't fire
           (run-with-timer 1.0 nil #'codeawareness--fallback-workspace-init))
       (error
-       (codeawareness-log-warn "Code Awareness: Failed to connect to local service, will retry in 2 seconds")
-       (codeawareness-log-warn "Code Awareness: Error: %s" err)
+       (codeawareness-log-warn "Failed to connect to local service, will retry in 5 seconds")
+       (codeawareness-log-warn "Error: %s" err)
        ;; Schedule retry
-       (run-with-timer 2.0 nil #'codeawareness--connect-to-local-service)))))
+       (run-with-timer 5.0 nil #'codeawareness--connect-to-local-service)))))
 
 (defun codeawareness--check-connection-timeout ()
   "Check if the connection is stuck and handle timeout."
@@ -880,7 +875,7 @@ FILE-PATH is the file path associated with this request (for validation)."
     (let ((status (process-status codeawareness--ipc-process)))
       (if (eq status 'connect)
           (progn
-            (codeawareness-log-error "Code Awareness: Connection stuck, retrying")
+            (codeawareness-log-error "Connection stuck, retrying")
             (delete-process codeawareness--ipc-process)
             (setq codeawareness--ipc-process nil)
             (run-with-timer 1.0 nil #'codeawareness--connect-to-local-service))))))
@@ -890,12 +885,12 @@ FILE-PATH is the file path associated with this request (for validation)."
   (when (and codeawareness--ipc-process
              (eq (process-status codeawareness--ipc-process) 'open)
              (not codeawareness--connected))
-    (codeawareness-log-info "Code Awareness: Using fallback workspace init")
+    (codeawareness-log-info "Using fallback workspace init")
     (codeawareness--init-workspace)))
 
 (defun codeawareness--force-cleanup ()
   "Force cleanup of all Code Awareness processes and state."
-  (codeawareness-log-info "Code Awareness: Force cleaning up all processes")
+  (codeawareness-log-info "Force cleaning up all processes")
 
   ;; Cancel any pending timers
   (when codeawareness--update-timer
@@ -914,9 +909,9 @@ FILE-PATH is the file path associated with this request (for validation)."
             (process-send-eof codeawareness--ipc-catalog-process))
           ;; Force delete the process
           (delete-process codeawareness--ipc-catalog-process)
-          (codeawareness-log-info "Code Awareness: Force deleted catalog process"))
+          (codeawareness-log-info "Force deleted catalog process"))
       (error
-       (codeawareness-log-error "Code Awareness: Error deleting catalog process: %s" err)))
+       (codeawareness-log-error "Error deleting catalog process: %s" err)))
     (setq codeawareness--ipc-catalog-process nil))
 
   (when codeawareness--ipc-process
@@ -927,9 +922,9 @@ FILE-PATH is the file path associated with this request (for validation)."
             (process-send-eof codeawareness--ipc-process))
           ;; Force delete the process
           (delete-process codeawareness--ipc-process)
-          (codeawareness-log-info "Code Awareness: Force deleted IPC process"))
+          (codeawareness-log-info "Force deleted IPC process"))
       (error
-       (codeawareness-log-error "Code Awareness: Error deleting IPC process: %s" err)))
+       (codeawareness-log-error "Error deleting IPC process: %s" err)))
     (setq codeawareness--ipc-process nil))
 
   ;; Remove hooks
@@ -945,11 +940,11 @@ FILE-PATH is the file path associated with this request (for validation)."
         codeawareness--client-registered nil
         codeawareness--poll-attempts 0)
 
-  (codeawareness-log-info "Code Awareness: Force cleanup completed"))
+  (codeawareness-log-info "Force cleanup completed"))
 
 (defun codeawareness--send-disconnect-messages ()
   "Send disconnect messages to catalog service."
-  (codeawareness-log-info "Code Awareness: Sending disconnect messages")
+  (codeawareness-log-info "Sending disconnect messages")
 
   ;; Send disconnect message to catalog
   (when (and codeawareness--ipc-catalog-process
@@ -959,11 +954,11 @@ FILE-PATH is the file path associated with this request (for validation)."
                                   (action . "clientDisconnect")
                                   (data . ,codeawareness--guid)
                                   (caw . ,codeawareness--guid)))))
-      (codeawareness-log-info "Code Awareness: Sending clientDisconnect to catalog")
+      (codeawareness-log-info "Sending clientDisconnect to catalog")
       (condition-case err
           (process-send-string codeawareness--ipc-catalog-process (concat message "\f"))
         (error
-         (codeawareness-log-error "Code Awareness: Failed to send clientDisconnect to catalog: %s" err))))))
+         (codeawareness-log-error "Failed to send clientDisconnect to catalog: %s" err))))))
 
 (defun codeawareness--check-catalog-process-status ()
   "Check the status of the catalog process."
@@ -971,12 +966,12 @@ FILE-PATH is the file path associated with this request (for validation)."
     (let ((status (process-status codeawareness--ipc-catalog-process)))
       (if (eq status 'open)
           (progn
-            (codeawareness-log-info "Code Awareness: Catalog connected")
+            (codeawareness-log-info "Catalog connected")
             ;; If client is not registered yet, trigger registration as fallback
             (unless codeawareness--client-registered
-              (codeawareness-log-info "Code Awareness: Registering client")
+              (codeawareness-log-info "Registering client")
               (codeawareness--catalog-filter codeawareness--ipc-catalog-process "connected")))
-        (codeawareness-log-error "Code Awareness: Catalog process not open, status: %s" status)))))
+        (codeawareness-log-error "Catalog process not open, status: %s" status)))))
 
 ;;; Buffer Management
 
@@ -1010,7 +1005,7 @@ FILE-PATH is the file path associated with this request (for validation)."
   (let ((current-buffer (current-buffer)))
     (when (and current-buffer
                (not (eq current-buffer codeawareness--active-buffer)))
-      (codeawareness-log-info "Code Awareness: Buffer switch detected: %s -> %s (has-file: %s)"
+      (codeawareness-log-info "Buffer switch detected: %s -> %s (has-file: %s)"
                               (if codeawareness--active-buffer (buffer-name codeawareness--active-buffer) "nil")
                               (buffer-name current-buffer)
                               (if (buffer-file-name current-buffer) "yes" "no"))
@@ -1023,14 +1018,14 @@ FILE-PATH is the file path associated with this request (for validation)."
             (if (and codeawareness--active-buffer active-file
                      (string= current-file active-file))
                 ;; Same file, no need to update active buffer
-                (codeawareness-log-info "Code Awareness: Switched to same file buffer")
+                (codeawareness-log-info "Switched to same file buffer")
               ;; Different file or no active buffer, update and refresh
               (progn
-                (codeawareness-log-info "Code Awareness: Active buffer changed to %s" current-file)
+                (codeawareness-log-info "Active buffer changed to %s" current-file)
                 (setq codeawareness--active-buffer current-buffer)
                 (codeawareness--refresh-active-file))))
         ;; Don't clear active buffer when switching to non-file buffers
-        (codeawareness-log-info "Code Awareness: Switched to buffer without file, keeping active buffer")))))
+        (codeawareness-log-info "Switched to buffer without file, keeping active buffer")))))
 
 ;;; Public API
 
@@ -1050,31 +1045,31 @@ FILE-PATH is the file path associated with this request (for validation)."
   "Clear all Code Awareness highlights from the current buffer."
   (interactive)
   (codeawareness--clear-buffer-highlights (current-buffer))
-  (message "Code Awareness: Cleared highlights"))
+  (message "Cleared highlights"))
 
 (defun codeawareness-clear-all-highlights ()
   "Clear all Code Awareness highlights from all buffers."
   (interactive)
   (codeawareness--clear-all-highlights)
-  (message "Code Awareness: Cleared all highlights"))
+  (message "Cleared all highlights"))
 
 (defun codeawareness-refresh-highlights ()
   "Refresh highlights for the current buffer."
   (interactive)
   (codeawareness--refresh-buffer-highlights (current-buffer))
-  (message "Code Awareness: Refreshed highlights"))
+  (message "Refreshed highlights"))
 
 (defun codeawareness-auth-status ()
   "Show the current authentication status."
   (interactive)
   (if codeawareness--authenticated
-      (message "Code Awareness: Authenticated as %s" (alist-get 'name codeawareness--user))
-    (message "Code Awareness: Not authenticated")))
+      (message "Authenticated as %s" (alist-get 'name codeawareness--user))
+    (message "Not authenticated")))
 
 (defun codeawareness-connection-status ()
   "Show the current connection status."
   (interactive)
-  (message "Code Awareness: Catalog connected: %s, Local service connected: %s, Authenticated: %s, Client registered: %s"
+  (message "Catalog connected: %s, Local service connected: %s, Authenticated: %s, Client registered: %s"
            (if (and codeawareness--ipc-catalog-process
                     (eq (process-status codeawareness--ipc-catalog-process) 'open)) "yes" "no")
            (if (and codeawareness--ipc-process
@@ -1085,20 +1080,20 @@ FILE-PATH is the file path associated with this request (for validation)."
 (defun codeawareness-retry-connection ()
   "Manually retry the connection to the local service."
   (interactive)
-  (codeawareness-log-info "Code Awareness: Manual connection retry requested")
+  (codeawareness-log-info "Manual connection retry requested")
   (when codeawareness--ipc-process
     (delete-process codeawareness--ipc-process)
     (setq codeawareness--ipc-process nil))
   (setq codeawareness--connected nil)
   (run-with-timer 0.5 nil #'codeawareness--connect-to-local-service)
-  (message "Code Awareness: Connection retry initiated"))
+  (message "Connection retry initiated"))
 
 (defun codeawareness-disconnect ()
   "Manually disconnect from Code Awareness services."
   (interactive)
-  (codeawareness-log-info "Code Awareness: Manual disconnect requested")
+  (codeawareness-log-info "Manual disconnect requested")
   (codeawareness--send-disconnect-messages)
-  (message "Code Awareness: Disconnect messages sent"))
+  (message "Disconnect messages sent"))
 
 (defun codeawareness-test-empty-line-highlighting ()
   "Test highlighting of empty lines to demonstrate the fix."
@@ -1110,9 +1105,9 @@ FILE-PATH is the file path associated with this request (for validation)."
                      ((line . 3) (type . conflict) (properties . ((test . t))))
                      ((line . 5) (type . peer) (properties . ((test . t))))
                      ((line . 7) (type . overlap) (properties . ((test . t)))))))
-    (message "Code Awareness: Testing empty line highlighting...")
+    (message "Testing empty line highlighting...")
     (codeawareness--apply-highlights-from-data (current-buffer) test-data)
-    (message "Code Awareness: Applied test highlights to lines 1, 3, 5, 7 (including empty lines)")))
+    (message "Applied test highlights to lines 1, 3, 5, 7 (including empty lines)")))
 
 (defun codeawareness-test-json-hl-data ()
   "Test highlighting using simulated JSON hl data (0-based line numbers)."
@@ -1122,13 +1117,13 @@ FILE-PATH is the file path associated with this request (for validation)."
     (codeawareness--init-hl-line-faces))
   ;; Simulate JSON hl data with 0-based line numbers (like from local service)
   (let ((json-hl-data [0 2 4 6])) ; 0-based line numbers
-    (message "Code Awareness: Testing JSON hl data: %s" json-hl-data)
+    (message "Testing JSON hl data: %s" json-hl-data)
     ;; Convert to highlight format (like the actual flow)
     (let ((highlights (codeawareness--convert-hl-to-highlights json-hl-data)))
-      (message "Code Awareness: Converted to highlights: %s" highlights)
+      (message "Converted to highlights: %s" highlights)
       ;; Apply highlights using the same pipeline as real JSON data
       (codeawareness--apply-highlights-from-data (current-buffer) highlights)
-      (message "Code Awareness: Applied JSON hl highlights to lines 1, 3, 5, 7 (0-based: 0, 2, 4, 6)"))))
+      (message "Applied JSON hl highlights to lines 1, 3, 5, 7 (0-based: 0, 2, 4, 6)"))))
 
 (defun codeawareness-debug-buffers ()
   "Show debug information about current buffer state."
@@ -1151,7 +1146,7 @@ FILE-PATH is the file path associated with this request (for validation)."
                                 (current-buffer) t nil)))
     (overlay-put overlay 'face face)
     (overlay-put overlay 'codeawareness-type 'test)
-    (message "Code Awareness: Test overlay created with face %s on line 1" face)
+    (message "Test overlay created with face %s on line 1" face)
     ;; Remove the test overlay after 3 seconds
     (run-with-timer 3.0 nil (lambda () (delete-overlay overlay)))))
 
@@ -1170,7 +1165,7 @@ FILE-PATH is the file path associated with this request (for validation)."
                                   (current-buffer) t nil)))
       (overlay-put overlay 'face face)
       (overlay-put overlay 'codeawareness-type 'test)
-      (message "Code Awareness: Test overlay for %s face on line %d" type line)
+      (message "Test overlay for %s face on line %d" type line)
       ;; Remove the test overlay after 5 seconds
       (run-with-timer 5.0 nil (lambda () (delete-overlay overlay))))))
 
@@ -1182,14 +1177,14 @@ FILE-PATH is the file path associated with this request (for validation)."
   (when (featurep 'hl-line)
     (setq codeawareness--hl-line-faces nil) ; Clear existing faces
     (codeawareness--init-hl-line-faces)
-    (message "Code Awareness: HL-line faces reinitialized")))
+    (message "HL-line faces reinitialized")))
 
 ;;; Cleanup on Emacs exit
 
 (defun codeawareness--cleanup-on-exit ()
   "Cleanup Code Awareness when Emacs is about to exit."
   (when codeawareness-mode
-    (codeawareness-log-info "Code Awareness: Emacs exiting, cleaning up connections")
+    (codeawareness-log-info "Emacs exiting, cleaning up connections")
     ;; Send disconnect messages first, then force cleanup
     (codeawareness--send-disconnect-messages)
     ;; Force synchronous cleanup to ensure processes are deleted
@@ -1208,10 +1203,10 @@ FILE-PATH is the file path associated with this request (for validation)."
         (if (and codeawareness--active-buffer active-file
                  (string= current-file active-file))
             ;; Same file, no need to update active buffer
-            (codeawareness-log-info "Code Awareness: Same file buffer displayed")
+            (codeawareness-log-info "Same file buffer displayed")
           ;; Different file or no active buffer, update and refresh
           (progn
-            (codeawareness-log-info "Code Awareness: Buffer displayed: %s" current-file)
+            (codeawareness-log-info "Buffer displayed: %s" current-file)
             (setq codeawareness--active-buffer current-buffer)
             (codeawareness--refresh-active-file)))))))
 
@@ -1249,7 +1244,7 @@ FILE-PATH is the file path associated with this request (for validation)."
 
 (defun codeawareness--disable ()
   "Disable Code Awareness."
-  (codeawareness-log-info "Code Awareness: Disabling and disconnecting")
+  (codeawareness-log-info "Disabling and disconnecting")
 
   ;; Remove hooks
   (remove-hook 'after-save-hook #'codeawareness--after-save-hook)
@@ -1275,7 +1270,7 @@ FILE-PATH is the file path associated with this request (for validation)."
 (defun codeawareness--cleanup-on-exit ()
   "Cleanup Code Awareness when Emacs is about to exit."
   (when codeawareness-mode
-    (codeawareness-log-info "Code Awareness: Emacs exiting, cleaning up connections")
+    (codeawareness-log-info "Emacs exiting, cleaning up connections")
     ;; Send disconnect messages first, then force cleanup
     (codeawareness--send-disconnect-messages)
     ;; Force synchronous cleanup to ensure processes are deleted
