@@ -66,8 +66,7 @@
 (defvar codeawareness--active-buffer nil
   "Currently active buffer.")
 
-(defvar codeawareness--last-file-buffer nil
-  "Last buffer with a file that was active.")
+
 
 (defvar codeawareness--update-timer nil
   "Timer for debounced updates.")
@@ -634,18 +633,18 @@ EXPECTED-FILE-PATH is the file path that was originally requested (for validatio
   (codeawareness--add-project data)
   ;; Extract and apply highlights from the hl data structure
   (let* ((hl-data (alist-get 'hl data))
-         (buffer (or codeawareness--active-buffer codeawareness--last-file-buffer)))
+         (buffer codeawareness--active-buffer))
     (codeawareness-log-info "Code Awareness: hl-data: %s, buffer: %s" hl-data (if buffer (buffer-name buffer) "nil"))
     (if (and hl-data buffer (buffer-live-p buffer))
         ;; Validate that the buffer still corresponds to the expected file
         (let ((current-file-path (buffer-file-name buffer)))
-          (if (and expected-file-path current-file-path 
-                   (string= (codeawareness--cross-platform-path expected-file-path) 
-                           (codeawareness--cross-platform-path current-file-path)))
+          (if (and expected-file-path current-file-path
+                   (string= (codeawareness--cross-platform-path expected-file-path)
+                            (codeawareness--cross-platform-path current-file-path)))
               ;; File paths match, apply highlights
               (progn
-                (codeawareness-log-info "Code Awareness: Applying highlights to buffer %s (file: %s)" 
-                                       (buffer-name buffer) current-file-path)
+                (codeawareness-log-info "Code Awareness: Applying highlights to buffer %s (file: %s)"
+                                        (buffer-name buffer) current-file-path)
                 ;; Convert hl data to highlight format
                 (let ((highlights (codeawareness--convert-hl-to-highlights hl-data)))
                   (when highlights
@@ -850,7 +849,7 @@ FILE-PATH is the file path associated with this request (for validation)."
     (codeawareness-log-info "Code Awareness: Current GUID: %s" codeawareness--guid)
     (codeawareness-log-info "Code Awareness: Attempting to connect to local service at %s" socket-path)
     (codeawareness-log-info "Code Awareness: Socket exists: %s" (file-exists-p socket-path))
-    
+
     (condition-case err
         (progn
           (codeawareness-log-info "Code Awareness: Creating network process...")
@@ -1015,29 +1014,23 @@ FILE-PATH is the file path associated with this request (for validation)."
                               (if codeawareness--active-buffer (buffer-name codeawareness--active-buffer) "nil")
                               (buffer-name current-buffer)
                               (if (buffer-file-name current-buffer) "yes" "no"))
-      ;; (when (and codeawareness--active-buffer
-      ;;           (buffer-live-p codeawareness--active-buffer))
-      ;;  (codeawareness-log-info "Code Awareness: Clearing highlights from previous buffer %s (switching to: %s)"
-      ;;                          (buffer-name codeawareness--active-buffer) (buffer-name current-buffer))
-      ;;  (codeawareness--clear-buffer-highlights codeawareness--active-buffer))
 
       (if (buffer-file-name current-buffer)
-          ;; Set the active buffer and refresh immediately (like VS Code's onDidChangeActiveTextEditor)
-          (progn
-            (codeawareness-log-info "Code Awareness: Active buffer changed to %s" (buffer-file-name current-buffer))
-            ;; Clear last hl data if switching to a different file
-            (when (and codeawareness--active-buffer
-                       (buffer-file-name codeawareness--active-buffer)
-                       (not (string= (buffer-file-name codeawareness--active-buffer)
-                                     (buffer-file-name current-buffer))))
-              (codeawareness-log-info "Code Awareness: Switching to different file"))
-            (setq codeawareness--active-buffer current-buffer)
-            (setq codeawareness--last-file-buffer current-buffer) ; Update the last file buffer
-            (codeawareness--refresh-active-file))
-        ;; Clear active buffer if switching to a buffer without a file
-        (codeawareness-log-info "Code Awareness: Switched to buffer without file, clearing active buffer")
-        (setq codeawareness--active-buffer nil)
-        (setq codeawareness--last-file-buffer nil)))))
+          ;; Only update active buffer if switching to a different file
+          (let ((current-file (buffer-file-name current-buffer))
+                (active-file (when codeawareness--active-buffer
+                               (buffer-file-name codeawareness--active-buffer))))
+            (if (and codeawareness--active-buffer active-file
+                     (string= current-file active-file))
+                ;; Same file, no need to update active buffer
+                (codeawareness-log-info "Code Awareness: Switched to same file buffer")
+              ;; Different file or no active buffer, update and refresh
+              (progn
+                (codeawareness-log-info "Code Awareness: Active buffer changed to %s" current-file)
+                (setq codeawareness--active-buffer current-buffer)
+                (codeawareness--refresh-active-file))))
+        ;; Don't clear active buffer when switching to non-file buffers
+        (codeawareness-log-info "Code Awareness: Switched to buffer without file, keeping active buffer")))))
 
 ;;; Public API
 
@@ -1140,9 +1133,8 @@ FILE-PATH is the file path associated with this request (for validation)."
 (defun codeawareness-debug-buffers ()
   "Show debug information about current buffer state."
   (interactive)
-  (message "Code Awareness Buffer Debug: Active: %s, Last File: %s, Current: %s, Current File: %s"
+  (message "Code Awareness Buffer Debug: Active: %s, Current: %s, Current File: %s"
            (if codeawareness--active-buffer (buffer-name codeawareness--active-buffer) "nil")
-           (if codeawareness--last-file-buffer (buffer-name codeawareness--last-file-buffer) "nil")
            (buffer-name (current-buffer))
            (if (buffer-file-name (current-buffer)) (buffer-file-name (current-buffer)) "nil")))
 
@@ -1210,10 +1202,18 @@ FILE-PATH is the file path associated with this request (for validation)."
     (when (and current-buffer
                (buffer-file-name current-buffer)
                (not (eq current-buffer codeawareness--active-buffer)))
-      (codeawareness-log-info "Code Awareness: Buffer displayed: %s" (buffer-file-name current-buffer))
-      (setq codeawareness--active-buffer current-buffer)
-      (setq codeawareness--last-file-buffer current-buffer)
-      (codeawareness--refresh-active-file))))
+      (let ((current-file (buffer-file-name current-buffer))
+            (active-file (when codeawareness--active-buffer
+                           (buffer-file-name codeawareness--active-buffer))))
+        (if (and codeawareness--active-buffer active-file
+                 (string= current-file active-file))
+            ;; Same file, no need to update active buffer
+            (codeawareness-log-info "Code Awareness: Same file buffer displayed")
+          ;; Different file or no active buffer, update and refresh
+          (progn
+            (codeawareness-log-info "Code Awareness: Buffer displayed: %s" current-file)
+            (setq codeawareness--active-buffer current-buffer)
+            (codeawareness--refresh-active-file)))))))
 
 ;;; Minor Mode
 
