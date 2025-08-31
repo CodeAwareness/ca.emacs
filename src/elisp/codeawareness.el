@@ -240,7 +240,7 @@
                                 (doc . ,doc)
                                 (caw . ,codeawareness--guid))))
             (codeawareness--transmit "repo:active-path" message-data)
-            (codeawareness--setup-response-handler "code" "repo:active-path")))))))
+            (codeawareness--setup-response-handler "code" "repo:active-path" fpath)))))))
 
 ;;; Highlighting System
 
@@ -626,8 +626,9 @@
         (remhash key codeawareness--response-handlers)
         (funcall handler data)))))
 
-(defun codeawareness--handle-repo-active-path-response (data)
-  "Handle response from repo:active-path request."
+(defun codeawareness--handle-repo-active-path-response (data &optional expected-file-path)
+  "Handle response from repo:active-path request.
+EXPECTED-FILE-PATH is the file path that was originally requested (for validation)."
   (codeawareness-log-info "Code Awareness: Received repo:active-path response")
   ;; Add the project to our store
   (codeawareness--add-project data)
@@ -636,13 +637,19 @@
          (buffer (or codeawareness--active-buffer codeawareness--last-file-buffer)))
     (codeawareness-log-info "Code Awareness: hl-data: %s, buffer: %s" hl-data (if buffer (buffer-name buffer) "nil"))
     (if (and hl-data buffer (buffer-live-p buffer))
-        ;; Apply highlights immediately if we have an active buffer
-        (progn
-          (codeawareness-log-info "Code Awareness: Applying highlights to buffer %s" (buffer-name buffer))
-          ;; Convert hl data to highlight format
-          (let ((highlights (codeawareness--convert-hl-to-highlights hl-data)))
-            (when highlights
-              (codeawareness--apply-highlights-from-data buffer highlights)))))))
+        ;; Validate that the buffer still corresponds to the expected file
+        (let ((current-file-path (buffer-file-name buffer)))
+          (if (and expected-file-path current-file-path 
+                   (string= (codeawareness--cross-platform-path expected-file-path) 
+                           (codeawareness--cross-platform-path current-file-path)))
+              ;; File paths match, apply highlights
+              (progn
+                (codeawareness-log-info "Code Awareness: Applying highlights to buffer %s (file: %s)" 
+                                       (buffer-name buffer) current-file-path)
+                ;; Convert hl data to highlight format
+                (let ((highlights (codeawareness--convert-hl-to-highlights hl-data)))
+                  (when highlights
+                    (codeawareness--apply-highlights-from-data buffer highlights)))))))))
 
 (defun codeawareness--handle-auth-info-response (data)
   "Handle response from auth:info request."
@@ -687,14 +694,15 @@
                                    (process-status codeawareness--ipc-process)))
       (codeawareness-log-error "Code Awareness: No IPC process available for transmission"))))
 
-(defun codeawareness--setup-response-handler (domain action)
-  "Setup response handlers for the given domain and action."
+(defun codeawareness--setup-response-handler (domain action &optional file-path)
+  "Setup response handlers for the given domain and action.
+FILE-PATH is the file path associated with this request (for validation)."
   (let ((res-key (format "res:%s:%s" domain action))
         (err-key (format "err:%s:%s" domain action)))
     ;; Set up specific handlers for known actions
     (cond
      ((string= (format "%s:%s" domain action) "code:repo:active-path")
-      (puthash res-key #'codeawareness--handle-repo-active-path-response codeawareness--response-handlers))
+      (puthash res-key (lambda (data) (codeawareness--handle-repo-active-path-response data file-path)) codeawareness--response-handlers))
      ((or (string= (format "%s:%s" domain action) "*:auth:info")
           (string= (format "%s:%s" domain action) "*:auth:login"))
       (puthash res-key #'codeawareness--handle-auth-info-response codeawareness--response-handlers))
