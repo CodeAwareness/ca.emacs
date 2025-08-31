@@ -100,6 +100,9 @@
 (defvar codeawareness--peer-fs (make-hash-table :test 'equal)
   "Peer file system tree structure.")
 
+(defvar codeawareness--events-table (make-hash-table :test 'equal)
+  "Hash table mapping event names to handler functions.")
+
 (defvar codeawareness--user nil
   "Current user data.")
 
@@ -152,6 +155,30 @@
           (user . ,codeawareness--user)
           (tokens . ,codeawareness--tokens)))
   (codeawareness-log-info "Store initialized"))
+
+(defun codeawareness--register-event-handler (event-name handler-function)
+  "Register an event handler function for the given event name."
+  (puthash event-name handler-function codeawareness--events-table)
+  (codeawareness-log-info "Registered event handler for: %s" event-name))
+
+(defun codeawareness--init-event-handlers ()
+  "Initialize all event handlers."
+  ;; Clear existing handlers
+  (clrhash codeawareness--events-table)
+  
+  ;; Register event handlers
+  (codeawareness--register-event-handler "peer:select" #'codeawareness--handle-peer-select)
+  (codeawareness--register-event-handler "peer:unselect" #'codeawareness--handle-peer-unselect)
+  (codeawareness--register-event-handler "branch:select" #'codeawareness--handle-branch-select)
+  (codeawareness--register-event-handler "branch:unselect" #'codeawareness--handle-branch-unselect)
+  (codeawareness--register-event-handler "branch:refresh" #'codeawareness--handle-branch-refresh)
+  (codeawareness--register-event-handler "auth:logout" #'codeawareness--handle-auth-logout)
+  (codeawareness--register-event-handler "context:add" #'codeawareness--handle-context-add)
+  (codeawareness--register-event-handler "context:del" #'codeawareness--handle-context-del)
+  (codeawareness--register-event-handler "context:open-rel" #'codeawareness--handle-context-open-rel)
+  ;; Add more event handlers here as needed
+  
+  (codeawareness-log-info "Event handlers initialized"))
 
 (defun codeawareness--clear-store ()
   "Clear the store and reset all state."
@@ -614,7 +641,14 @@
           (if (and (string= flow "err") action)
               (codeawareness--handle-error domain action error-data)
             (if (and (string= flow "req") action)
-                (codeawareness-log-info "Received request (not handling): %s:%s" domain action)
+                (progn
+                  (codeawareness-log-info "Received request: %s:%s" domain action)
+                  ;; Handle events using the events table
+                  (let ((event-key (format "%s:%s" domain action))
+                        (handler (gethash action codeawareness--events-table)))
+                    (if handler
+                        (funcall handler response-data)
+                      (codeawareness-log-info "No handler for event: %s" event-key))))
               (codeawareness-log-warn "Unknown message format: %s" message)))))
     (error
      (codeawareness-log-error "Error parsing IPC message: %s" err))))
@@ -672,6 +706,203 @@ EXPECTED-FILE-PATH is the file path that was originally requested (for validatio
     (setq codeawareness--authenticated nil)
     (codeawareness-log-warn "No authentication data received - user needs to authenticate")))
 
+(defun codeawareness--handle-peer-select (peer-data)
+  "Handle peer selection event from Muninn app."
+  (codeawareness-log-info "Peer selected: %s" (alist-get 'name peer-data))
+  (setq codeawareness--selected-peer peer-data)
+  
+  ;; Get active project information
+  (let* ((active-project codeawareness--active-project)
+         (origin (alist-get 'origin active-project))
+         (fpath (alist-get 'activePath active-project)))
+    (if (not fpath)
+        (codeawareness-log-warn "No active file path for peer diff")
+      ;; Send request for peer diff
+      (let ((message-data `((origin . ,origin)
+                            (fpath . ,fpath)
+                            (caw . ,codeawareness--guid)
+                            (peer . ,peer-data))))
+        (codeawareness-log-info "Requesting peer diff for %s" fpath)
+        (codeawareness--transmit "repo:diff-peer" message-data)
+        (codeawareness--setup-response-handler "code" "repo:diff-peer")))))
+
+(defun codeawareness--handle-peer-unselect ()
+  "Handle peer unselection event from Muninn app."
+  (codeawareness-log-info "Peer unselected")
+  (setq codeawareness--selected-peer nil)
+  ;; Close any open diff buffers
+  (codeawareness--close-diff-buffers))
+
+(defun codeawareness--handle-peer-diff-response (data)
+  "Handle response from repo:diff-peer request."
+  (codeawareness-log-info "Received peer diff response")
+  (let* ((peer-file (alist-get 'peerFile data))
+         (title (alist-get 'title data))
+         (active-project codeawareness--active-project)
+         (root (alist-get 'root active-project))
+         (fpath (alist-get 'activePath active-project))
+         (user-file (when (and root fpath)
+                      (expand-file-name fpath root))))
+    (if (and peer-file user-file)
+        (progn
+          (codeawareness-log-info "Opening diff: %s vs %s" peer-file user-file)
+          (codeawareness--open-diff-view peer-file user-file title))
+      (codeawareness-log-error "Missing file paths for diff: peer-file=%s, user-file=%s" 
+                               peer-file user-file))))
+
+(defun codeawareness--open-diff-view (peer-file user-file title)
+  "Open a diff view comparing peer file with user file."
+  (let* ((peer-buffer (find-file-noselect peer-file))
+         (user-buffer (find-file-noselect user-file)))
+    ;; Use ediff for a better diff experience if available
+    (if (fboundp 'ediff-buffers)
+        (progn
+          (codeawareness-log-info "Using ediff for diff view")
+          (ediff-buffers peer-buffer user-buffer))
+      ;; Fallback to diff-mode in a separate buffer
+      (let ((diff-buffer-name (format "*CodeAwareness Diff: %s*" title)))
+        (let ((diff-buffer (get-buffer-create diff-buffer-name)))
+          (with-current-buffer diff-buffer
+            ;; Clear the buffer
+            (erase-buffer)
+            ;; Insert diff content
+            (let ((diff-output (codeawareness--generate-diff peer-file user-file)))
+              (insert diff-output)
+              ;; Set up the buffer for diff viewing
+              (diff-mode)
+              ;; Make the buffer read-only
+              (setq buffer-read-only t)
+              ;; Display the buffer
+              (switch-to-buffer diff-buffer)
+              (message "Opened diff view: %s" title))))))))
+
+(defun codeawareness--generate-diff (file1 file2)
+  "Generate diff output between two files."
+  (let ((diff-command (format "diff -u %s %s" file1 file2)))
+    (with-temp-buffer
+      (let ((exit-code (call-process-shell-command diff-command nil t)))
+        (if (= exit-code 0)
+            "Files are identical"
+          (buffer-string))))))
+
+(defun codeawareness--close-diff-buffers ()
+  "Close all CodeAwareness diff buffers."
+  (dolist (buffer (buffer-list))
+    (when (and (string-match "\\*CodeAwareness Diff:" (buffer-name buffer))
+               (buffer-live-p buffer))
+      (kill-buffer buffer)))
+  (message "Closed CodeAwareness diff buffers"))
+
+(defun codeawareness-show-peer-diff ()
+  "Manually trigger peer diff for testing purposes."
+  (interactive)
+  (if codeawareness--selected-peer
+      (let* ((active-project codeawareness--active-project)
+             (origin (alist-get 'origin active-project))
+             (fpath (alist-get 'activePath active-project)))
+        (if (not fpath)
+            (message "No active file path for peer diff")
+          (let ((message-data `((origin . ,origin)
+                                (fpath . ,fpath)
+                                (caw . ,codeawareness--guid)
+                                (peer . ,codeawareness--selected-peer))))
+            (codeawareness-log-info "Manually requesting peer diff for %s" fpath)
+            (codeawareness--transmit "repo:diff-peer" message-data)
+            (codeawareness--setup-response-handler "code" "repo:diff-peer"))))
+    (message "No peer selected")))
+
+;;; Additional Event Handlers
+
+(defun codeawareness--handle-branch-select (branch)
+  "Handle branch selection event."
+  (codeawareness-log-info "Branch selected: %s" branch)
+  (let ((message-data `((branch . ,branch)
+                        (caw . ,codeawareness--guid))))
+    (codeawareness--transmit "repo:diff-branch" message-data)
+    (codeawareness--setup-response-handler "code" "repo:diff-branch")))
+
+(defun codeawareness--handle-branch-unselect ()
+  "Handle branch unselection event."
+  (codeawareness-log-info "Branch unselected")
+  (codeawareness--close-diff-buffers))
+
+(defun codeawareness--handle-branch-refresh (data)
+  "Handle branch refresh event."
+  (codeawareness-log-info "Branch refresh requested")
+  ;; TODO: Implement branch refresh using git and display in panel
+  (message "Branch refresh not yet implemented"))
+
+(defun codeawareness--handle-auth-logout ()
+  "Handle auth logout event."
+  (codeawareness-log-info "Auth logout requested")
+  (codeawareness--clear-store)
+  (codeawareness--clear-all-highlights)
+  (message "Logged out"))
+
+(defun codeawareness--handle-context-add (context)
+  "Handle context add event."
+  (codeawareness-log-info "Context add requested: %s" context)
+  (let* ((active-project codeawareness--active-project)
+         (root (alist-get 'root active-project))
+         (fpath (alist-get 'activePath active-project))
+         (full-path (when (and root fpath)
+                      (expand-file-name fpath root))))
+    (if (not full-path)
+        (codeawareness-log-warn "No active file path for context add")
+      (let ((message-data `((fpath . ,full-path)
+                            (selections . ,codeawareness--active-selections)
+                            (context . ,context)
+                            (op . "add")
+                            (caw . ,codeawareness--guid))))
+        (codeawareness--transmit "context:apply" message-data)
+        (codeawareness--setup-response-handler "code" "context:apply")))))
+
+(defun codeawareness--handle-context-del (context)
+  "Handle context delete event."
+  (codeawareness-log-info "Context delete requested: %s" context)
+  (let* ((active-project codeawareness--active-project)
+         (root (alist-get 'root active-project))
+         (fpath (alist-get 'activePath active-project))
+         (full-path (when (and root fpath)
+                      (expand-file-name fpath root))))
+    (if (not full-path)
+        (codeawareness-log-warn "No active file path for context delete")
+      (let ((message-data `((fpath . ,full-path)
+                            (selections . ,codeawareness--active-selections)
+                            (context . ,context)
+                            (op . "del")
+                            (caw . ,codeawareness--guid))))
+        (codeawareness--transmit "context:apply" message-data)
+        (codeawareness--setup-response-handler "code" "context:apply")))))
+
+(defun codeawareness--handle-context-open-rel (data)
+  "Handle context open relative event."
+  (codeawareness-log-info "Context open relative requested: %s" (alist-get 'sourceFile data))
+  (let ((source-file (alist-get 'sourceFile data)))
+    (when source-file
+      (find-file source-file))))
+
+;;; Response Handlers
+
+(defun codeawareness--handle-branch-diff-response (data)
+  "Handle response from repo:diff-branch request."
+  (codeawareness-log-info "Received branch diff response")
+  (let* ((peer-file (alist-get 'peerFile data))
+         (user-file (alist-get 'userFile data))
+         (title (alist-get 'title data)))
+    (if (and peer-file user-file)
+        (progn
+          (codeawareness-log-info "Opening branch diff: %s vs %s" peer-file user-file)
+          (codeawareness--open-diff-view peer-file user-file title))
+      (codeawareness-log-error "Missing file paths for branch diff: peer-file=%s, user-file=%s" 
+                               peer-file user-file))))
+
+(defun codeawareness--handle-context-apply-response (data)
+  "Handle response from context:apply request."
+  (codeawareness-log-info "Received context apply response")
+  ;; TODO: Handle context update response
+  (message "Context applied successfully"))
+
 (defun codeawareness--handle-error (domain action error-data)
   "Handle an IPC error."
   (let* ((key (format "err:%s:%s" domain action))
@@ -708,6 +939,12 @@ FILE-PATH is the file path associated with this request (for validation)."
     (cond
      ((string= (format "%s:%s" domain action) "code:repo:active-path")
       (puthash res-key (lambda (data) (codeawareness--handle-repo-active-path-response data file-path)) codeawareness--response-handlers))
+     ((string= (format "%s:%s" domain action) "code:repo:diff-peer")
+      (puthash res-key #'codeawareness--handle-peer-diff-response codeawareness--response-handlers))
+     ((string= (format "%s:%s" domain action) "code:repo:diff-branch")
+      (puthash res-key #'codeawareness--handle-branch-diff-response codeawareness--response-handlers))
+     ((string= (format "%s:%s" domain action) "code:context:apply")
+      (puthash res-key #'codeawareness--handle-context-apply-response codeawareness--response-handlers))
      ((or (string= (format "%s:%s" domain action) "*:auth:info")
           (string= (format "%s:%s" domain action) "*:auth:login"))
       (puthash res-key #'codeawareness--handle-auth-info-response codeawareness--response-handlers))
@@ -1243,6 +1480,7 @@ FILE-PATH is the file path associated with this request (for validation)."
   "Enable Code Awareness."
   (codeawareness--init-config)
   (codeawareness--init-store)
+  (codeawareness--init-event-handlers)
   (codeawareness--init-ipc)
   (codeawareness--init-highlight-faces)
   (add-hook 'after-save-hook #'codeawareness--after-save-hook)
