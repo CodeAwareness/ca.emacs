@@ -1,20 +1,18 @@
 # -*- fill-column: 120 -*-
 #+STARTUP: noinlineimages
 
-[[https://gitter.im/treemacs/community][file:https://badges.gitter.im/CodeAwareness/codeawareness-emacs.png]]
-[[https://melpa.org/#/treemacs][file:https://melpa.org/packages/codeawareness-badge.svg]]
-[[https://stable.melpa.org/#/treemacs][file:https://stable.melpa.org/packages/codeawareness-badge.svg]]
+[[https://matrix.to/#/#codeawareness:gitter.im][file:https://img.shields.io/matrix/codeawareness%3Agitter.im?server_fqdn=matrix.org]]
+[[https://melpa.org/#/codeawareness-emacs][file:https://melpa.org/packages/codeawareness-badge.svg]]
+[[https://stable.melpa.org/#/codeawareness-emacs][file:https://stable.melpa.org/packages/codeawareness-badge.svg]]
 
 * Code Awareness - a low noise collaboration toolset for Emacs     :noexport:
 
-[[file:screenshots/screenshot.png]]
+[[file:screenshots/demo-side-by-side.jpg]]
 
 * Content                                                                            :TOC:noexport:
 - [[#state-of-development][State of Development]]
 - [[#quick-feature-overview][Quick Feature Overview]]
 - [[#quick-start][Quick Start]]
-- [[#compatibility][Compatibility]]
-- [[#faq][FAQ]]
 - [[#contributing][Contributing]]
 - [[#working-with-the-code-base][Working With The Code Base]]
 - [[#dependencies][Dependencies]]
