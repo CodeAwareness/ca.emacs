@@ -161,7 +161,9 @@
   (codeawareness-log-info "Store initialized"))
 
 (defun codeawareness--register-event-handler (event-name handler-function)
-  "Register an event handler function for the given event name."
+  "Register an event handler function for the given event name.
+Argument EVENT-NAME string in the format category:action, e.g. peer:select.
+Argument HANDLER-FUNCTION a ref to the function that should handle the event."
   (puthash event-name handler-function codeawareness--events-table)
   (codeawareness-log-info "Registered event handler for: %s" event-name))
 
@@ -211,7 +213,7 @@
 ;;; Project Management
 
 (defun codeawareness--add-project (project)
-  "Add a project to the store."
+  "Add a PROJECT to the store."
   (codeawareness-log-info "Adding project %s" (alist-get 'root project))
   (setq codeawareness--active-project project)
   ;; Add to projects list if not already present
@@ -235,16 +237,16 @@
       (buffer-string))))
 
 (defun codeawareness--cross-platform-path (path)
-  "Convert path to cross-platform format (forward slashes)."
+  "Convert PATH to cross-platform format (forward slashes)."
   (when path
     (replace-regexp-in-string "\\\\" "/" path)))
 
 ;;; Workspace Management
 
 ;; The refreshActiveFile hook implementation follows the VSCode pattern:
-;; 1. Called immediately after authentication is successful (like VSCode's init function)
-;; 2. Called whenever the active buffer changes (like VSCode's onDidChangeActiveTextEditor)
-;; 3. Sends a repo:active-path message to the local service with the current file path and content
+;; 1. Called immediately after authentication is successful
+;; 2. Called whenever the active buffer changes
+;; 3. Sends a repo:active-path message to CodeAwareness app with the current file path and content
 ;; 4. Updates highlights and project data based on the response
 
 (defun codeawareness--refresh-active-file ()
@@ -345,12 +347,15 @@
   (codeawareness-log-info "Highlight faces initialized"))
 
 (defun codeawareness--get-highlight-face (type)
-  "Get the face for the given highlight type."
+  "Get the face for the given highlight TYPE."
   (alist-get type codeawareness--highlight-faces))
 
 (defun codeawareness--create-line-overlay (buffer line-number face &optional properties)
-  "Create an overlay for a specific line in the given buffer.
-Uses hl-line technique to properly handle empty lines."
+  "Create an overlay for a specific line in the given BUFFER.
+Uses hl-line technique to properly handle empty lines.
+Argument LINE-NUMBER the zero-based line number to highlight.
+Argument FACE the face to use for highlighting.
+Optional argument PROPERTIES optional overlay properties (hl-lines)."
   (when (and buffer (buffer-live-p buffer))
     (with-current-buffer buffer
       (let* ((line-count (line-number-at-pos (point-max)))
@@ -379,7 +384,7 @@ Uses hl-line technique to properly handle empty lines."
             overlay))))))
 
 (defun codeawareness--clear-buffer-highlights (buffer)
-  "Clear all Code Awareness highlights from the given buffer."
+  "Clear all Code Awareness highlight from the given BUFFER."
   (when (and buffer (buffer-live-p buffer))
     (with-current-buffer buffer
       (dolist (overlay (overlays-in (point-min) (point-max)))
@@ -392,7 +397,7 @@ Uses hl-line technique to properly handle empty lines."
     (codeawareness-log-info "Cleared highlights for buffer %s" buffer)))
 
 (defun codeawareness--clear-all-highlights ()
-  "Clear all Code Awareness highlights from all buffers."
+  "Clear all Code Awareness highlight from all buffers."
   (dolist (buffer (buffer-list))
     (codeawareness--clear-buffer-highlights buffer))
   (clrhash codeawareness--highlights)
@@ -403,13 +408,15 @@ Uses hl-line technique to properly handle empty lines."
   (codeawareness-log-info "Cleared all highlights"))
 
 (defun codeawareness--apply-highlights-from-data (buffer highlight-data)
-  "Apply highlights to buffer based on data from the local service."
+  "Apply highlights to BUFFER based on data from the local service.
+Argument HIGHLIGHT-DATA the array of lines to highlight."
   (when (and buffer (buffer-live-p buffer) highlight-data)
     ;; Use hl-line mode if configured, otherwise use custom overlays
     (codeawareness--apply-hl-line-highlights-from-data buffer highlight-data)))
 
 (defun codeawareness--convert-hl-to-highlights (hl-data)
-  "Convert hl data structure to highlight format. HL-DATA should be an array
+  "Convert hl data structure to highlight format.
+HL-DATA should be an array
 of line numbers. Returns a list of highlight alists with \\='line and \\='type keys."
   (let ((highlights '()))
     ;; Handle both lists and vectors (JSON arrays are parsed as vectors)
@@ -458,13 +465,16 @@ of line numbers. Returns a list of highlight alists with \\='line and \\='type k
     (codeawareness-log-info "HL-line faces initialized")))
 
 (defun codeawareness--get-hl-line-face (type)
-  "Get the hl-line face for the given highlight type."
+  "Get the hl-line face for the given highlight TYPE."
   (or (alist-get type codeawareness--hl-line-faces)
       ;; Fallback to default hl-line face if not found
       'hl-line))
 
 (defun codeawareness--add-hl-line-highlight (buffer line-number type &optional properties)
-  "Add a highlight using hl-line mode to the specified line in the given buffer."
+  "Add a highlight using hl-line mode to the specified line in the given BUFFER.
+Argument LINE-NUMBER the line number to highlight.
+Argument TYPE the type of highlight to use (one of the hl-lines faces).
+Optional argument PROPERTIES optional properties for hl-lines overlay."
   (when (and buffer line-number type (featurep 'hl-line))
     ;; Ensure hl-line faces are initialized
     (unless codeawareness--hl-line-faces
@@ -497,7 +507,7 @@ of line numbers. Returns a list of highlight alists with \\='line and \\='type k
       overlay)))
 
 (defun codeawareness--clear-buffer-hl-line-highlights (buffer)
-  "Clear all Code Awareness hl-line highlights from the given buffer."
+  "Clear all Code Awareness hl-line highlight from the given BUFFER."
   (when (and buffer (buffer-live-p buffer))
     (with-current-buffer buffer
       (dolist (overlay (overlays-in (point-min) (point-max)))
@@ -507,7 +517,8 @@ of line numbers. Returns a list of highlight alists with \\='line and \\='type k
     (remhash buffer codeawareness--hl-line-overlays)))
 
 (defun codeawareness--apply-hl-line-highlights-from-data (buffer highlight-data)
-  "Apply hl-line highlights to buffer based on data from the local service."
+  "Apply hl-line highlight to BUFFER based on data from the local service.
+Argument HIGHLIGHT-DATA the array of lines to highlight."
   (when (and buffer (buffer-live-p buffer) highlight-data (featurep 'hl-line))
     ;; Clear existing highlights first
     (codeawareness--clear-buffer-hl-line-highlights buffer)
@@ -536,7 +547,7 @@ of line numbers. Returns a list of highlight alists with \\='line and \\='type k
   (codeawareness--get-socket-path codeawareness-catalog))
 
 (defun codeawareness--ipc-sentinel (_process event)
-  "Handle IPC process sentinel events."
+  "Handle IPC process sentinel EVENTs."
   (codeawareness-log-info "Code Awareness IPC: %s" event)
   (cond
    ((string-match "failed" event)
@@ -561,7 +572,7 @@ of line numbers. Returns a list of highlight alists with \\='line and \\='type k
     (codeawareness-log-warn "Unknown IPC sentinel event: %s" event))))
 
 (defun codeawareness--ipc-filter (process data)
-  "Handle IPC process data."
+  "Handle IPC PROCESS DATA."
   (let ((buffer (process-buffer process)))
     (when buffer
       (with-current-buffer buffer
@@ -581,7 +592,7 @@ of line numbers. Returns a list of highlight alists with \\='line and \\='type k
         (codeawareness--handle-ipc-message message)))))
 
 (defun codeawareness--handle-ipc-message (message)
-  "Handle a single IPC message."
+  "Handle a single IPC MESSAGE."
   (condition-case err
       (let* ((data (json-read-from-string message))
              (flow (alist-get 'flow data))
@@ -608,7 +619,10 @@ of line numbers. Returns a list of highlight alists with \\='line and \\='type k
      (codeawareness-log-error "Error parsing IPC message: %s" err))))
 
 (defun codeawareness--handle-response (domain action data)
-  "Handle an IPC response."
+  "Handle an IPC response.
+Argument DOMAIN string describing the event domain, e.g. code, auth, etc.
+Argument ACTION string describing the event action, e.g. auth:info.
+Argument DATA additional data received from Code Awareness (JSON)."
   (let* ((key (format "res:%s:%s" domain action))
          (handler (gethash key codeawareness--response-handlers)))
     ;; Handle auth responses automatically (they may come from external sources)
@@ -620,8 +634,10 @@ of line numbers. Returns a list of highlight alists with \\='line and \\='type k
         (funcall handler data)))))
 
 (defun codeawareness--handle-repo-active-path-response (data &optional expected-file-path)
-  "Handle response from repo:active-path request. EXPECTED-FILE-PATH is the
-   file path that was originally requested (for validation)."
+  "Handle response from repo:active-path request.
+EXPECTED-FILE-PATH is the
+file path that was originally requested (for validation).
+Argument DATA the data received from Code Awareness application."
   (codeawareness-log-info "Received repo:active-path response")
   ;; Add the project to our store
   (codeawareness--add-project data)
@@ -642,7 +658,8 @@ of line numbers. Returns a list of highlight alists with \\='line and \\='type k
                     (codeawareness--apply-highlights-from-data buffer highlights)))))))))
 
 (defun codeawareness--handle-auth-info-response (data)
-  "Handle response from auth:info request."
+  "Handle response from auth:info request.
+Argument DATA the data received from Code Awareness application."
   (if (and data (listp data) (alist-get 'user data))
       (progn
         (setq codeawareness--user (alist-get 'user data))
@@ -656,7 +673,8 @@ of line numbers. Returns a list of highlight alists with \\='line and \\='type k
     (codeawareness-log-warn "No authentication data received - user needs to authenticate")))
 
 (defun codeawareness--handle-peer-select (peer-data)
-  "Handle peer selection event from Muninn app."
+  "Handle peer selection event from Muninn app.
+Argument PEER-DATA the data received from Code Awareness application (peer info)."
   (codeawareness-log-info "Peer selected: %s" (alist-get 'name peer-data))
   (setq codeawareness--selected-peer peer-data)
 
@@ -683,7 +701,8 @@ of line numbers. Returns a list of highlight alists with \\='line and \\='type k
   (codeawareness--close-diff-buffers))
 
 (defun codeawareness--handle-peer-diff-response (data)
-  "Handle response from repo:diff-peer request."
+  "Handle response from repo:diff-peer request.
+Argument DATA the data received from Code Awareness application (peer file info)."
   (codeawareness-log-info "Received peer diff response")
   (let* ((peer-file (alist-get 'peerFile data))
          (title (alist-get 'title data))
@@ -700,7 +719,10 @@ of line numbers. Returns a list of highlight alists with \\='line and \\='type k
                                peer-file user-file))))
 
 (defun codeawareness--open-diff-view (peer-file user-file title)
-  "Open a diff view comparing peer file with user file."
+  "Open a diff view comparing peer file with user file.
+Argument PEER-FILE the path of the peer file that was extracted (in tmp folder).
+Argument USER-FILE the path of the existing file in the buffer, or path to an empty file.
+Argument TITLE title of the diff buffer."
   (let* ((peer-buffer (find-file-noselect peer-file))
          (user-buffer (find-file-noselect user-file)))
     ;; Use ediff for a better diff experience if available
@@ -726,7 +748,9 @@ of line numbers. Returns a list of highlight alists with \\='line and \\='type k
               (message "Opened diff view: %s" title))))))))
 
 (defun codeawareness--generate-diff (file1 file2)
-  "Generate diff output between two files."
+  "Generate diff output between two files.
+Argument FILE1 the first file in the diff command.
+Argument FILE2 the second file in the diff command."
   (let ((diff-command (format "diff -u %s %s" file1 file2)))
     (with-temp-buffer
       (let ((exit-code (call-process-shell-command diff-command nil t)))
@@ -745,7 +769,7 @@ of line numbers. Returns a list of highlight alists with \\='line and \\='type k
 ;;; Additional Event Handlers
 
 (defun codeawareness--handle-branch-select (branch)
-  "Handle branch selection event."
+  "Handle BRANCH selection event."
   (codeawareness-log-info "Branch selected: %s" branch)
   (let ((message-data `((branch . ,branch)
                         (caw . ,codeawareness--guid))))
@@ -771,7 +795,7 @@ of line numbers. Returns a list of highlight alists with \\='line and \\='type k
   (message "Logged out"))
 
 (defun codeawareness--handle-context-add (context)
-  "Handle context add event. TODO: work in progress"
+  "Handle CONTEXT add event. TODO: work in progress."
   (codeawareness-log-info "Context add requested: %s" context)
   (let* ((active-project codeawareness--active-project)
          (root (alist-get 'root active-project))
@@ -789,7 +813,7 @@ of line numbers. Returns a list of highlight alists with \\='line and \\='type k
         (codeawareness--setup-response-handler "code" "context:apply")))))
 
 (defun codeawareness--handle-context-del (context)
-  "Handle context delete event."
+  "Handle CONTEXT delete event."
   (codeawareness-log-info "Context delete requested: %s" context)
   (let* ((active-project codeawareness--active-project)
          (root (alist-get 'root active-project))
@@ -807,7 +831,8 @@ of line numbers. Returns a list of highlight alists with \\='line and \\='type k
         (codeawareness--setup-response-handler "code" "context:apply")))))
 
 (defun codeawareness--handle-context-open-rel (data)
-  "Handle context open relative event."
+  "Handle context open relative event.
+Argument DATA the data received from Code Awareness application."
   (codeawareness-log-info "Context open relative requested: %s" (alist-get 'sourceFile data))
   (let ((source-file (alist-get 'sourceFile data)))
     (when source-file
@@ -816,7 +841,8 @@ of line numbers. Returns a list of highlight alists with \\='line and \\='type k
 ;;; Response Handlers
 
 (defun codeawareness--handle-branch-diff-response (data)
-  "Handle response from repo:diff-branch request."
+  "Handle response from repo:diff-branch request.
+Argument DATA the data received from Code Awareness application."
   (codeawareness-log-info "Received branch diff response")
   (let* ((peer-file (alist-get 'peerFile data))
          (user-file (alist-get 'userFile data))
@@ -835,7 +861,10 @@ of line numbers. Returns a list of highlight alists with \\='line and \\='type k
   (message "Context applied successfully"))
 
 (defun codeawareness--handle-error (domain action error-data)
-  "Handle an IPC error."
+  "Handle an IPC error.
+Argument DOMAIN the request domain, e.g. auth, code, etc.
+Argument ACTION the request action, e.g. auth:info.
+Argument ERROR-DATA incoming error message."
   (let* ((key (format "err:%s:%s" domain action))
          (handler (gethash key codeawareness--response-handlers)))
     (when handler
@@ -843,7 +872,10 @@ of line numbers. Returns a list of highlight alists with \\='line and \\='type k
       (funcall handler error-data))))
 
 (defun codeawareness--transmit (action data)
-  "Transmit a message to the Code Awareness IPC."
+  "Transmit a message to the Code Awareness IPC.
+Argument ACTION the action to send to Code Awareness app,
+e.g. repo:active-path, auth:info, etc.
+Argument DATA data to send to Code Awareness application."
   (let* ((domain (if (member action '("auth:info" "auth:login")) "*" "code"))
          (flow "req")
          (message (json-encode `((flow . ,flow)
@@ -862,7 +894,7 @@ of line numbers. Returns a list of highlight alists with \\='line and \\='type k
       (codeawareness-log-error "No IPC process available for transmission"))))
 
 (defun codeawareness--setup-response-handler (domain action &optional file-path)
-  "Setup response handlers for the given domain and action.
+  "Setup response handlers for the given DOMAIN and ACTION.
 FILE-PATH is the file path associated with this request (for validation)."
   (let ((res-key (format "res:%s:%s" domain action))
         (err-key (format "err:%s:%s" domain action)))
@@ -884,11 +916,13 @@ FILE-PATH is the file path associated with this request (for validation)."
     (puthash err-key #'codeawareness--handle-failure codeawareness--response-handlers)))
 
 (defun codeawareness--handle-success (data)
-  "Handle successful IPC response."
+  "Handle successful IPC response.
+Argument DATA data received from the request."
   (codeawareness-log-info "Success - %s" (format "%s" data)))
 
 (defun codeawareness--handle-failure (error-data)
-  "Handle failed IPC response for unknown actions."
+  "Handle failed IPC response for unknown actions.
+Argument ERROR-DATA error message received from the request."
   (codeawareness-log-error "Error handle for unknown action - %s" (format "%s" error-data)))
 
 ;;; Connection Management
@@ -926,7 +960,7 @@ FILE-PATH is the file path associated with this request (for validation)."
                 catalog-path err)))))
 
 (defun codeawareness--catalog-sentinel (_process event)
-  "Handle catalog process sentinel events."
+  "Handle catalog process sentinel EVENTs."
   (cond
    ((string-match "failed" event)
     (codeawareness-log-error "Failed to connect to catalog service at %s"
@@ -945,7 +979,7 @@ FILE-PATH is the file path associated with this request (for validation)."
     (codeawareness--catalog-filter "connected"))))
 
 (defun codeawareness--catalog-filter (data)
-  "Handle catalog process data."
+  "Handle catalog process DATA."
   (when (string= data "connected")
     (codeawareness--register-client)))
 
@@ -1161,11 +1195,11 @@ FILE-PATH is the file path associated with this request (for validation)."
 ;;; Hooks and Event Handling
 
 (defun codeawareness--after-save-hook ()
-  "Hook function for after-save-hook."
+  "Hook function for `after-save-hook'."
   (codeawareness--update))
 
 (defun codeawareness--post-command-hook ()
-  "Hook function for post-command-hook."
+  "Hook function for `post-command-hook'."
   (let ((current-buffer (current-buffer)))
     (when (and current-buffer
                (not (eq current-buffer codeawareness--active-buffer)))
@@ -1177,10 +1211,10 @@ FILE-PATH is the file path associated with this request (for validation)."
             (if (and codeawareness--active-buffer active-file
                      (string= current-file active-file))
                 ;; Same file, no need to update active buffer
-              ;; Different file or no active buffer, update and refresh
-              (progn
-                (setq codeawareness--active-buffer current-buffer)
-                (codeawareness--refresh-active-file))))
+                ;; Different file or no active buffer, update and refresh
+                (progn
+                  (setq codeawareness--active-buffer current-buffer)
+                  (codeawareness--refresh-active-file))))
         ;; Don't clear active buffer when switching to non-file buffers
         ))))
 
@@ -1192,7 +1226,7 @@ FILE-PATH is the file path associated with this request (for validation)."
   (codeawareness--refresh-active-file))
 
 (defun codeawareness-clear-all-highlights ()
-  "Clear all Code Awareness highlights from all buffers."
+  "Clear all Code Awareness highlight from all buffers."
   (interactive)
   (codeawareness--clear-all-highlights)
   (message "Cleared all highlights"))
@@ -1228,8 +1262,8 @@ FILE-PATH is the file path associated with this request (for validation)."
 ;;; Minor Mode
 
 (define-minor-mode codeawareness-mode
-  "Toggle Code Awareness mode. 
-  Enable Code Awareness functionality for collaborative development."
+  "Toggle Code Awareness mode.
+Enable Code Awareness functionality for collaborative development."
   :init-value nil
   :global t
   :lighter " CAW"
@@ -1279,7 +1313,7 @@ FILE-PATH is the file path associated with this request (for validation)."
 ;;; Cleanup on Emacs exit
 
 (defun codeawareness--buffer-list-update-hook ()
-  "Hook function for buffer-list-update-hook to detect when buffers are displayed."
+  "Hook function for `buffer-list-update-hook' to detect when buffers are displayed."
   (let ((current-buffer (current-buffer)))
     (when (and current-buffer
                (buffer-file-name current-buffer)
