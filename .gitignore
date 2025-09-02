@@ -1,2 +1,24 @@
-/.cask/
-/performance-test/
+# Compiled Emacs Lisp files
+*.elc
+
+# Build artifacts
+.cask/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Editor files
+*~
+\#*\#
+.#*
+.vscode/
+.idea/
+
+# Logs
+*.log

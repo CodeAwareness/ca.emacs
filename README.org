@@ -45,7 +45,7 @@ Clone this repository, and then in your emacs config, add the following lines, a
   ;; Code Awareness Configuration
   (let ((codeawareness-path "/home/username/ca.emacs/"))
     (when (file-exists-p codeawareness-path)
-      (add-to-list 'load-path (expand-file-name "src/elisp" codeawareness-path))
+      (add-to-list 'load-path codeawareness-path)
       (require 'codeawareness-config)
       (require 'codeawareness-logger)
       (require 'codeawareness)
@@ -61,12 +61,11 @@ If you're using Spacemacs, you can add the Code Awareness configuration to your 
   ;; Code Awareness Configuration
   (let ((codeawareness-path "/home/username/ca.emacs/"))
     (when (file-exists-p codeawareness-path)
-      (add-to-list 'load-path (expand-file-name "src/elisp" codeawareness-path))
+      (add-to-list 'load-path codeawareness-path)
       (require 'codeawareness-config)
       (require 'codeawareness-logger)
       (require 'codeawareness)
       (message "Code Awareness loaded successfully"))))
-```
 
 ### Loading Compiled Version (.elc files)
 
@@ -88,9 +87,9 @@ To load the compiled version instead of the source files for better performance:
      ;; Code Awareness Configuration (compiled version)
      (let ((codeawareness-path "/home/username/ca.emacs/"))
        (when (file-exists-p codeawareness-path)
-         (add-to-list 'load-path (expand-file-name "src/elisp" codeawareness-path))
+         (add-to-list 'load-path codeawareness-path)
          ;; Force loading of compiled version if available
-         (let ((compiled-file (expand-file-name "src/elisp/codeawareness.elc" codeawareness-path)))
+         (let ((compiled-file (expand-file-name "codeawareness.elc" codeawareness-path)))
            (if (file-exists-p compiled-file)
                (load compiled-file)
              ;; Fallback to source if no compiled version

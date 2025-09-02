@@ -4,15 +4,14 @@ MAKEFLAGS += k
 CASK = cask
 EMACS ?= emacs
 
-SRC_DIR          = src/elisp
-EMACSFLAGS       = -Q -batch -L $(SRC_DIR)
+EMACSFLAGS       = -Q -batch -L .
 COMPILE_COMMAND  = --eval "(setq byte-compile-error-on-warn t)" -f batch-byte-compile
 CHECKDOC_COMMAND = -l "test/checkdock.el"
 LINT_DIR         = /tmp/codeawareness
 LINT_FLAG        = --eval "(setq byte-compile-dest-file-function (lambda (f) (concat \"$(LINT_DIR)\" (file-name-nondirectory f) \"c\")))"
-TEST_COMMAND     = buttercup -L $(SRC_DIR) -L . $(NO_LOAD_WARNINGS)
+TEST_COMMAND     = buttercup -L . $(NO_LOAD_WARNINGS)
 
-ELS  = $(SRC_DIR)/codeawareness.el
+ELS  = codeawareness.el codeawareness-config.el codeawareness-logger.el
 ELCS = $(ELS:.el=.elc)
 
 .PHONY: test compile checkdoc clean lint prepare clean-start .prepare-lint
@@ -37,8 +36,7 @@ test: prepare
 	@$(CASK) exec $(TEST_COMMAND)
 
 clean:
-	@rm -f $(SRC_DIR)/*.elc
-	@rm -f $(EXTRA_DIR)/*.elc
+	@rm -f *.elc
 
 lint: EMACSFLAGS += $(LINT_FLAG)
 lint: .prepare-lint compile checkdoc
@@ -48,7 +46,7 @@ checkdoc:
 	@$(CASK) exec $(EMACS) $(EMACSFLAGS) $(CHECKDOC_COMMAND)
 
 clean-start: prepare
-	@$(CASK) exec $(EMACS) -Q -L $(SRC_DIR) --eval "(require 'codeawareness)" &
+	@$(CASK) exec $(EMACS) -Q -L . --eval "(require 'codeawareness)" &
 
 .prepare-lint:
 	@rm -rf $(LINT_DIR)

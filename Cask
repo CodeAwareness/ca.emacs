@@ -1,7 +1,7 @@
 (source gnu)
 (source melpa)
 
-(package-file "src/elisp/codeawareness.el")
+(package-file "codeawareness.el")
 
 (development
  (depends-on "web"))
