@@ -1,9 +1,8 @@
 ;;; codeawareness.el --- Code Awareness for Emacs -*- lexical-binding: t -*-
 
-;; Copyright (C) 2023 - 2025 Mark Vasile
-
 ;; Author: Mark Vasile <mark@codeawareness.com>
 ;; Package-Requires: ((emacs "26.1"))
+;; Keywords: code awareness, collaboration, development, convenience tools
 ;; Homepage: https://github.com/CodeAwareness/ca.emacs
 
 ;; Version: 1.0
@@ -21,10 +20,15 @@
 ;; You should have received a copy of the GNU General Public License
 ;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+;; This file is part of GNU Emacs.
+;;
+;; This package is licensed under GPLv3. It depends on the Code Awareness
+;; binary, available at https://codeawareness.com
+
 ;;; Commentary:
 
 ;; Code Awareness highlights the code intersections between your working
-;; copy and other team member's. This provides an early warning system
+;; copy and other team members. This provides an early warning system
 ;; for merge conflicts, as well as instant traveling between working
 ;; copies of multiple developers without needing to commit and push.
 
@@ -34,7 +38,7 @@
 (require 'cl-lib)
 (require 'codeawareness-config)
 (require 'codeawareness-logger)
-(require 'hl-line nil t) ; Optional require for hl-line integration
+(require 'hl-line nil t)
 
 ;;; Customization
 
@@ -138,7 +142,6 @@
   "Initialize configuration."
   (setq codeawareness--config
         `((catalog . ,codeawareness-catalog)
-          (highlight-while-closed . ,codeawareness-highlight-while-closed)
           (update-delay . ,codeawareness-update-delay)))
   (codeawareness-log-info "Configuration initialized"))
 
@@ -385,8 +388,7 @@ Uses hl-line technique to properly handle empty lines."
     ;; Remove from highlights hash table
     (remhash buffer codeawareness--highlights)
     ;; Also clear hl-line highlights if using that mode
-    (when (and codeawareness-use-hl-line-mode (featurep 'hl-line))
-      (codeawareness--clear-buffer-hl-line-highlights buffer))
+    (codeawareness--clear-buffer-hl-line-highlights buffer)
     (codeawareness-log-info "Cleared highlights for buffer %s" buffer)))
 
 (defun codeawareness--clear-all-highlights ()
@@ -395,21 +397,16 @@ Uses hl-line technique to properly handle empty lines."
     (codeawareness--clear-buffer-highlights buffer))
   (clrhash codeawareness--highlights)
   ;; Also clear hl-line highlights if using that mode
-  (when (and codeawareness-use-hl-line-mode (featurep 'hl-line))
-    (dolist (buffer (buffer-list))
-      (codeawareness--clear-buffer-hl-line-highlights buffer))
-    (clrhash codeawareness--hl-line-overlays))
+  (dolist (buffer (buffer-list))
+    (codeawareness--clear-buffer-hl-line-highlights buffer))
+  (clrhash codeawareness--hl-line-overlays)
   (codeawareness-log-info "Cleared all highlights"))
 
 (defun codeawareness--apply-highlights-from-data (buffer highlight-data)
   "Apply highlights to buffer based on data from the local service."
   (when (and buffer (buffer-live-p buffer) highlight-data)
     ;; Use hl-line mode if configured, otherwise use custom overlays
-    (if (and codeawareness-use-hl-line-mode (featurep 'hl-line))
-        (progn
-          (codeawareness-log-info "Using hl-line mode for highlighting")
-          (codeawareness--apply-hl-line-highlights-from-data buffer highlight-data))
-      (codeawareness-log-info "Using custom overlay mode for highlighting"))))
+    (codeawareness--apply-hl-line-highlights-from-data buffer highlight-data)))
 
 (defun codeawareness--convert-hl-to-highlights (hl-data)
   "Convert hl data structure to highlight format. HL-DATA should be an array
@@ -928,7 +925,7 @@ FILE-PATH is the file path associated with this request (for validation)."
        (message "Failed to connect to catalog service at %s. Error: %s"
                 catalog-path err)))))
 
-(defun codeawareness--catalog-sentinel (process event)
+(defun codeawareness--catalog-sentinel (_process event)
   "Handle catalog process sentinel events."
   (cond
    ((string-match "failed" event)
@@ -1293,7 +1290,7 @@ FILE-PATH is the file path associated with this request (for validation)."
         (if (and codeawareness--active-buffer active-file
                  (string= current-file active-file))
             ;; Same file, no need to update active buffer
-            (nil)
+            ()
           ;; Different file or no active buffer, update and refresh
           (progn
             (setq codeawareness--active-buffer current-buffer)

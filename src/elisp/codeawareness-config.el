@@ -47,11 +47,6 @@
   :type 'string
   :group 'codeawareness-config)
 
-(defcustom codeawareness-highlight-while-closed t
-  "Whether to highlight lines when the panel is closed."
-  :type 'boolean
-  :group 'codeawareness-config)
-
 (defcustom codeawareness-highlight-intensity 0.3
   "Intensity of highlighting (0.0 to 1.0)."
   :type 'number
@@ -69,14 +64,6 @@
 
 (defcustom codeawareness-full-width-highlights t
   "Whether to use full-width highlights that extend to the end of the line."
-  :type 'boolean
-  :group 'codeawareness-config)
-
-(defcustom codeawareness-use-hl-line-mode t
-  "Whether to use hl-line mode for highlighting instead of custom overlays.
-When enabled, Code Awareness will use hl-line mode which provides better
-support for empty lines and integrates with Emacs' built-in highlighting system.
-When disabled, uses the improved overlay method that also handles empty lines properly."
   :type 'boolean
   :group 'codeawareness-config)
 

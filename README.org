@@ -1,4 +1,4 @@
-# -*- fill-column: 120 org-list-indent-offset: 1 toc-org-max-depth: 2 org-hide-emphasis-markers: nil -*-
+# -*- fill-column: 120 -*-
 #+STARTUP: noinlineimages
 
 [[https://gitter.im/treemacs/community][file:https://badges.gitter.im/CodeAwareness/codeawareness-emacs.png]]
@@ -25,10 +25,17 @@ Code Awarenes is currently in an active state of development. Feel free to submi
 Other components of the Code Awareness ecosystem are also in active state of development, so please
 follow us on github or our website.
 
+Please see the README-Development.md for more details.
+
 * Quick Feature Overview
 Code Awareness highlights the code intersections between your working copy and other team member's.
 This provides an early warning system for merge conflicts, as well as instant traveling between
 working copies of multiple developers without needing to commit and push.
+
+## License
+
+This package is licensed under the GPLv3. 
+It requires the Code Awareness binary (proprietary, licensed separately) to function fully.
 
 # Installation
 
@@ -44,6 +51,61 @@ Clone this repository, and then in your emacs config, add the following lines, a
       (require 'codeawareness)
       (message "Code Awareness loaded successfully")))
 ```
+
+## Spacemacs Configuration
+
+If you're using Spacemacs, you can add the Code Awareness configuration to your `~/.spacemacs` file in the `dotspacemacs/user-config` section:
+
+```elisp
+(defun dotspacemacs/user-config ()
+  ;; Code Awareness Configuration
+  (let ((codeawareness-path "/home/username/ca.emacs/"))
+    (when (file-exists-p codeawareness-path)
+      (add-to-list 'load-path (expand-file-name "src/elisp" codeawareness-path))
+      (require 'codeawareness-config)
+      (require 'codeawareness-logger)
+      (require 'codeawareness)
+      (message "Code Awareness loaded successfully"))))
+```
+
+### Loading Compiled Version (.elc files)
+
+To load the compiled version instead of the source files for better performance:
+
+1. **Compile the package first:**
+   ```bash
+   cd /path/to/ca.emacs
+   make compile
+   ```
+
+2. **Automatic loading (no action needed):**
+   Emacs automatically loads `.elc` files when they exist alongside `.el` files. The compiled version will be loaded automatically.
+
+3. **Force loading of compiled version (optional):**
+   If you want to ensure only compiled files are loaded and prevent any fallback to source files, you can modify your config to explicitly load the `.elc` files:
+   ```elisp
+   (defun dotspacemacs/user-config ()
+     ;; Code Awareness Configuration (compiled version)
+     (let ((codeawareness-path "/home/username/ca.emacs/"))
+       (when (file-exists-p codeawareness-path)
+         (add-to-list 'load-path (expand-file-name "src/elisp" codeawareness-path))
+         ;; Force loading of compiled version if available
+         (let ((compiled-file (expand-file-name "src/elisp/codeawareness.elc" codeawareness-path)))
+           (if (file-exists-p compiled-file)
+               (load compiled-file)
+             ;; Fallback to source if no compiled version
+             (require 'codeawareness-config)
+             (require 'codeawareness-logger)
+             (require 'codeawareness)))
+         (message "Code Awareness loaded successfully"))))
+   ```
+
+**Note:** The compiled version loads faster and includes all the compilation fixes we've implemented. Always run `make compile` after making changes to ensure your `.elc` files are up to date.
+
+**Summary for users:**
+- **Required**: Run `make compile` to create `.elc` files
+- **Automatic**: Emacs will use the compiled version by default
+- **Optional**: Use step 3 only if you want to force compiled-only loading
 
 * Quick Start
  * First download and run the [[https://codeawareness.com]][Code Awareness] application.
