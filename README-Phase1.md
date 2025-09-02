@@ -77,15 +77,9 @@ Comprehensive logging system:
 
 ### Commands
 
-- `M-x codeawareness-toggle` - Toggle Code Awareness mode
 - `M-x codeawareness-refresh` - Refresh Code Awareness data
 - `M-x codeawareness-show-log-buffer` - Show the log buffer
 - `M-x codeawareness-clear-log-buffer` - Clear the log buffer
-
-### Keybindings
-
-- `C-c C-a t` - Toggle Code Awareness mode
-- `C-c C-a r` - Refresh Code Awareness data
 
 ### Testing
 

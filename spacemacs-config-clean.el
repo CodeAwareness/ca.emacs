@@ -45,7 +45,6 @@
 ;; (codeawareness-mode 1)
 
 ;; Optional: Add Spacemacs keybindings
-;; (spacemacs/set-leader-keys "a c" 'codeawareness-toggle)
 ;; (spacemacs/set-leader-keys "a r" 'codeawareness-refresh)
 ;; (spacemacs/set-leader-keys "a l" 'codeawareness-show-log-buffer)
 

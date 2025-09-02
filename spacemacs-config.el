@@ -24,7 +24,6 @@
 ;; (setq codeawareness-update-delay 0.3)  ; Faster updates
 
 ;; Optional: Add keybindings to Spacemacs
-;; (spacemacs/set-leader-keys "a c" 'codeawareness-toggle)
 ;; (spacemacs/set-leader-keys "a r" 'codeawareness-refresh)
 ;; (spacemacs/set-leader-keys "a l" 'codeawareness-show-log-buffer)
 

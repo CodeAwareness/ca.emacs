@@ -37,7 +37,6 @@ Add the following to your `~/.spacemacs` file in the `dotspacemacs/user-config` 
 ;; (codeawareness-mode 1)
 
 ;; Optional: Add Spacemacs keybindings
-;; (spacemacs/set-leader-keys "a c" 'codeawareness-toggle)
 ;; (spacemacs/set-leader-keys "a r" 'codeawareness-refresh)
 ;; (spacemacs/set-leader-keys "a l" 'codeawareness-show-log-buffer)
 ```
