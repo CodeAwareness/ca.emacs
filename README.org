@@ -30,14 +30,26 @@ Code Awareness highlights the code intersections between your working copy and o
 This provides an early warning system for merge conflicts, as well as instant traveling between
 working copies of multiple developers without needing to commit and push.
 
+# Installation
+
+Clone this repository, and then in your emacs config, add the following lines, and replace the /home/username/ca.emacs/ with the path of your choice.
+
+```
+  ;; Code Awareness Configuration
+  (let ((codeawareness-path "/home/username/ca.emacs/"))
+    (when (file-exists-p codeawareness-path)
+      (add-to-list 'load-path (expand-file-name "src/elisp" codeawareness-path))
+      (require 'codeawareness-config)
+      (require 'codeawareness-logger)
+      (require 'codeawareness)
+      (message "Code Awareness loaded successfully")))
+```
+
 * Quick Start
- * Run the `codeawareness-mode` command to enter Code Awareness minor mode.
-
-* Compatibility
-- Nothing here yet.
-
-* FAQ
-- Nothing here yet.
+ * First download and run the [[https://codeawareness.com]][Code Awareness] application.
+ * Login to Code Awareness through the application.
+ * In emacs, run the `codeawareness-mode` command to enter Code Awareness minor mode.
+ * The Code Awareness application is used side by side with emacs, VSCode, etc, i.e. on a wide-screen monitor, or on a second monitor.
 
 * Contributing
 Contributions are very much welcome, but should fit the general scope and style of Code Awareness.
@@ -50,9 +62,7 @@ The following is a list of guidelines that should be met (exceptions confirm the
  - There must not be any compiler warnings.
  - The test suite must pass.
 
-Code Awareness uses cask to setup a local testing environment and a Makefile that simplifies compiling and testing the
-codebase. First run ~cask install~ to locally pull codeawareness' dependencies. Then you can use the following Makefile
-targets:
+Code Awareness uses cask to setup a local testing environment and a Makefile that simplifies compiling and testing the codebase. First run ~cask install~ to locally pull codeawareness' dependencies. Then you can use the following Makefile targets:
 
  - make prepare :: Downloads and updates Cask's dependencies. Is a dependency of the ~test~ and ~compile~ targets.
  - make compile :: Compiles the code base (and treats compiler warnings as errors).

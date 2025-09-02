@@ -66,7 +66,8 @@
 (defvar codeawareness--active-buffer nil
   "Currently active buffer.")
 
-
+(defvar codeawareness--poll-attempts 0
+  "Number of polling attempts for local service socket.")
 
 (defvar codeawareness--update-timer nil
   "Timer for debounced updates.")
@@ -165,7 +166,7 @@
   "Initialize all event handlers."
   ;; Clear existing handlers
   (clrhash codeawareness--events-table)
-  
+
   ;; Register event handlers
   (codeawareness--register-event-handler "peer:select" #'codeawareness--handle-peer-select)
   (codeawareness--register-event-handler "peer:unselect" #'codeawareness--handle-peer-unselect)
@@ -177,7 +178,7 @@
   (codeawareness--register-event-handler "context:del" #'codeawareness--handle-context-del)
   (codeawareness--register-event-handler "context:open-rel" #'codeawareness--handle-context-open-rel)
   ;; Add more event handlers here as needed
-  
+
   (codeawareness-log-info "Event handlers initialized"))
 
 (defun codeawareness--clear-store ()
@@ -345,18 +346,23 @@
   (alist-get type codeawareness--highlight-faces))
 
 (defun codeawareness--create-line-overlay (buffer line-number face &optional properties)
-  "Create an overlay for a specific line in the given buffer. Uses hl-line technique to properly handle empty lines."
+  "Create an overlay for a specific line in the given buffer.
+Uses hl-line technique to properly handle empty lines."
   (when (and buffer (buffer-live-p buffer))
     (with-current-buffer buffer
       (let* ((line-count (line-number-at-pos (point-max)))
              ;; Use save-excursion to get absolute line positions regardless of cursor position
              (start (save-excursion
-                      (goto-line line-number)
+                      ;; Suppress warning: goto-line is needed for absolute positioning
+                      (with-suppressed-warnings ((interactive-only goto-line))
+                        (goto-line line-number))
                       (line-beginning-position)))
              ;; Use hl-line technique: end at start of next line instead of end of current line
              ;; This ensures empty lines get proper overlay span
              (end (save-excursion
-                    (goto-line (1+ line-number))
+                    ;; Suppress warning: goto-line is needed for absolute positioning
+                    (with-suppressed-warnings ((interactive-only goto-line))
+                      (goto-line (1+ line-number)))
                     (line-beginning-position))))
         (when (and (<= line-number line-count) (>= line-number 1))
           (let ((overlay (make-overlay start end buffer t nil)))
@@ -415,8 +421,6 @@
     (let ((buffer-highlights (gethash buffer codeawareness--highlights)))
       (when buffer-highlights
         (codeawareness-log-info "Refreshing highlights for buffer %s" buffer)
-        ;; Clear existing overlays
-        ;; (codeawareness--clear-buffer-highlights buffer)
         ;; Recreate highlights from stored data
         (maphash (lambda (line-number highlight-data)
                    (let ((type (overlay-get highlight-data 'codeawareness-highlight-type))
@@ -448,7 +452,8 @@
             (codeawareness--add-highlight buffer line type properties)))))))
 
 (defun codeawareness--convert-hl-to-highlights (hl-data)
-  "Convert hl data structure to highlight format. HL-DATA should be an array of line numbers. Returns a list of highlight alists with 'line and 'type keys."
+  "Convert hl data structure to highlight format. HL-DATA should be an array
+of line numbers. Returns a list of highlight alists with \\='line and \\='type keys."
   (let ((highlights '()))
     ;; Handle both lists and vectors (JSON arrays are parsed as vectors)
     (when (and (or (listp hl-data) (vectorp hl-data))
@@ -511,10 +516,14 @@
            ;; Use save-excursion to get absolute line positions regardless of cursor position
            (overlay (with-current-buffer buffer
                       (make-overlay (save-excursion
-                                      (goto-line line-number)
+                                      ;; Suppress warning: goto-line is needed for absolute positioning
+                                      (with-suppressed-warnings ((interactive-only goto-line))
+                                        (goto-line line-number))
                                       (line-beginning-position))
                                     (save-excursion
-                                      (goto-line (1+ line-number))
+                                      ;; Suppress warning: goto-line is needed for absolute positioning
+                                      (with-suppressed-warnings ((interactive-only goto-line))
+                                        (goto-line (1+ line-number)))
                                       (line-beginning-position))
                                     buffer t nil))))
       (codeawareness-log-info "Created hl-line overlay for line %d in buffer %s with face %s"
@@ -575,7 +584,7 @@
   "Get the catalog socket path."
   (codeawareness--get-socket-path codeawareness-catalog))
 
-(defun codeawareness--ipc-sentinel (process event)
+(defun codeawareness--ipc-sentinel (_process event)
   "Handle IPC process sentinel events."
   (codeawareness-log-info "Code Awareness IPC: %s" event)
   (cond
@@ -612,8 +621,7 @@
 
 (defun codeawareness--process-ipc-messages ()
   "Process complete IPC messages from the buffer."
-  (let ((delimiter "\f")
-        (buffer (current-buffer)))
+  (let ((delimiter "\f"))
     (goto-char (point-min))
     (while (search-forward delimiter nil t)
       (let* ((end-pos (point))
@@ -630,8 +638,7 @@
              (domain (alist-get 'domain data))
              (action (alist-get 'action data))
              (response-data (alist-get 'data data))
-             (error-data (alist-get 'err data))
-             (caw (alist-get 'caw data)))
+             (error-data (alist-get 'err data)))
         (codeawareness-log-info "%s:%s" domain action)
         ;; (codeawareness-log-info "Raw message: %S" message)
         ;; (codeawareness-log-info "Parsed data: %S" data)
@@ -666,8 +673,8 @@
         (funcall handler data)))))
 
 (defun codeawareness--handle-repo-active-path-response (data &optional expected-file-path)
-  "Handle response from repo:active-path request.
-EXPECTED-FILE-PATH is the file path that was originally requested (for validation)."
+  "Handle response from repo:active-path request. EXPECTED-FILE-PATH is the
+   file path that was originally requested (for validation)."
   (codeawareness-log-info "Received repo:active-path response")
   ;; Add the project to our store
   (codeawareness--add-project data)
@@ -710,7 +717,7 @@ EXPECTED-FILE-PATH is the file path that was originally requested (for validatio
   "Handle peer selection event from Muninn app."
   (codeawareness-log-info "Peer selected: %s" (alist-get 'name peer-data))
   (setq codeawareness--selected-peer peer-data)
-  
+
   ;; Get active project information
   (let* ((active-project codeawareness--active-project)
          (origin (alist-get 'origin active-project))
@@ -747,7 +754,7 @@ EXPECTED-FILE-PATH is the file path that was originally requested (for validatio
         (progn
           (codeawareness-log-info "Opening diff: %s vs %s" peer-file user-file)
           (codeawareness--open-diff-view peer-file user-file title))
-      (codeawareness-log-error "Missing file paths for diff: peer-file=%s, user-file=%s" 
+      (codeawareness-log-error "Missing file paths for diff: peer-file=%s, user-file=%s"
                                peer-file user-file))))
 
 (defun codeawareness--open-diff-view (peer-file user-file title)
@@ -826,7 +833,7 @@ EXPECTED-FILE-PATH is the file path that was originally requested (for validatio
   (codeawareness-log-info "Branch unselected")
   (codeawareness--close-diff-buffers))
 
-(defun codeawareness--handle-branch-refresh (data)
+(defun codeawareness--handle-branch-refresh (_data)
   "Handle branch refresh event."
   (codeawareness-log-info "Branch refresh requested")
   ;; TODO: Implement branch refresh using git and display in panel
@@ -894,10 +901,10 @@ EXPECTED-FILE-PATH is the file path that was originally requested (for validatio
         (progn
           (codeawareness-log-info "Opening branch diff: %s vs %s" peer-file user-file)
           (codeawareness--open-diff-view peer-file user-file title))
-      (codeawareness-log-error "Missing file paths for branch diff: peer-file=%s, user-file=%s" 
+      (codeawareness-log-error "Missing file paths for branch diff: peer-file=%s, user-file=%s"
                                peer-file user-file))))
 
-(defun codeawareness--handle-context-apply-response (data)
+(defun codeawareness--handle-context-apply-response (_data)
   "Handle response from context:apply request."
   (codeawareness-log-info "Received context apply response")
   ;; TODO: Handle context update response
@@ -1013,9 +1020,9 @@ FILE-PATH is the file path associated with this request (for validation)."
     (message "Connected to catalog service")
     (setq codeawareness--connected t)
     ;; Send 'connected' message to trigger client registration (matching VSCode behavior)
-    (codeawareness--catalog-filter process "connected"))))
+    (codeawareness--catalog-filter "connected"))))
 
-(defun codeawareness--catalog-filter (process data)
+(defun codeawareness--catalog-filter (data)
   "Handle catalog process data."
   (codeawareness-log-info "Code Awareness Catalog: Received data: %s" data)
   (when (string= data "connected")
@@ -1024,20 +1031,18 @@ FILE-PATH is the file path associated with this request (for validation)."
 
 (defun codeawareness--register-client ()
   "Register this client with the catalog service."
-  (when codeawareness--client-registered
-    (codeawareness-log-info "Client already registered, skipping")
-    (return-from codeawareness--register-client))
-
-  (let ((message (json-encode `((flow . "req")
-                                (domain . "*")
-                                (action . "clientId")
-                                (data . ,codeawareness--guid)
-                                (caw . ,codeawareness--guid)))))
-    (when codeawareness--ipc-catalog-process
-      (process-send-string codeawareness--ipc-catalog-process (concat message "\f"))
-      (codeawareness-log-info "Client registered")
-      (setq codeawareness--client-registered t)
-      (codeawareness--init-server))))
+  (unless codeawareness--client-registered
+    (let ((message (json-encode `((flow . "req")
+                                  (domain . "*")
+                                  (action . "clientId")
+                                  (data . ,codeawareness--guid)
+                                  (caw . ,codeawareness--guid)))))
+      (when codeawareness--ipc-catalog-process
+        (process-send-string codeawareness--ipc-catalog-process (concat message "\f"))
+        (codeawareness-log-info "Client registered")
+        (setq codeawareness--client-registered t)
+        (codeawareness--init-server))))
+  (codeawareness-log-info "Client already registered, skipping"))
 
 (defun codeawareness--init-server ()
   "Initialize the server connection."
@@ -1058,9 +1063,6 @@ FILE-PATH is the file path associated with this request (for validation)."
            (eq (process-status codeawareness--ipc-process) 'open))
       (codeawareness--transmit "auth:info" nil)
     (codeawareness-log-error "IPC process not ready for auth:info request")))
-
-(defvar codeawareness--poll-attempts 0
-  "Number of polling attempts for local service socket.")
 
 (defvar codeawareness--max-poll-attempts 10
   "Maximum number of polling attempts.")
@@ -1218,7 +1220,7 @@ FILE-PATH is the file path associated with this request (for validation)."
             ;; If client is not registered yet, trigger registration as fallback
             (unless codeawareness--client-registered
               (codeawareness-log-info "Registering client")
-              (codeawareness--catalog-filter codeawareness--ipc-catalog-process "connected")))
+              (codeawareness--catalog-filter "connected")))
         (codeawareness-log-error "Catalog process not open, status: %s" status)))))
 
 ;;; Buffer Management
