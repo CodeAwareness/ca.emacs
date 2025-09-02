@@ -674,7 +674,7 @@ Argument DATA the data received from Code Awareness application."
 
 (defun codeawareness--handle-peer-select (peer-data)
   "Handle peer selection event from Muninn app.
-Argument PEER-DATA the data received from Code Awareness application (peer info)."
+Argument PEER-DATA the data received from Code Awareness (peer info)."
   (codeawareness-log-info "Peer selected: %s" (alist-get 'name peer-data))
   (setq codeawareness--selected-peer peer-data)
 
@@ -702,7 +702,7 @@ Argument PEER-DATA the data received from Code Awareness application (peer info)
 
 (defun codeawareness--handle-peer-diff-response (data)
   "Handle response from repo:diff-peer request.
-Argument DATA the data received from Code Awareness application (peer file info)."
+Argument DATA the data received from Code Awareness (peer file info)."
   (codeawareness-log-info "Received peer diff response")
   (let* ((peer-file (alist-get 'peerFile data))
          (title (alist-get 'title data))
@@ -721,7 +721,7 @@ Argument DATA the data received from Code Awareness application (peer file info)
 (defun codeawareness--open-diff-view (peer-file user-file title)
   "Open a diff view comparing peer file with user file.
 Argument PEER-FILE the path of the peer file that was extracted (in tmp folder).
-Argument USER-FILE the path of the existing file in the buffer, or path to an empty file.
+Argument USER-FILE the path of the existing file in the buffer.
 Argument TITLE title of the diff buffer."
   (let* ((peer-buffer (find-file-noselect peer-file))
          (user-buffer (find-file-noselect user-file)))
@@ -1313,7 +1313,7 @@ Enable Code Awareness functionality for collaborative development."
 ;;; Cleanup on Emacs exit
 
 (defun codeawareness--buffer-list-update-hook ()
-  "Hook function for `buffer-list-update-hook' to detect when buffers are displayed."
+  "Hook function to detect when buffers are displayed."
   (let ((current-buffer (current-buffer)))
     (when (and current-buffer
                (buffer-file-name current-buffer)
