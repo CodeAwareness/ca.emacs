@@ -1279,13 +1279,6 @@ FILE-PATH is the file path associated with this request (for validation)."
 
 ;;; Public API
 
-(defun codeawareness-toggle ()
-  "Toggle Code Awareness mode."
-  (interactive)
-  (if codeawareness-mode
-      (codeawareness-mode -1)
-    (codeawareness-mode 1)))
-
 (defun codeawareness-refresh ()
   "Refresh Code Awareness data."
   (interactive)
@@ -1429,51 +1422,15 @@ FILE-PATH is the file path associated with this request (for validation)."
     (codeawareness--init-hl-line-faces)
     (message "HL-line faces reinitialized")))
 
-;;; Cleanup on Emacs exit
-
-(defun codeawareness--cleanup-on-exit ()
-  "Cleanup Code Awareness when Emacs is about to exit."
-  (when codeawareness-mode
-    (codeawareness-log-info "Emacs exiting, cleaning up connections")
-    ;; Send disconnect messages first, then force cleanup
-    (codeawareness--send-disconnect-messages)
-    ;; Force synchronous cleanup to ensure processes are deleted
-    (codeawareness--force-cleanup)))
-
-
-(defun codeawareness--buffer-list-update-hook ()
-  "Hook function for buffer-list-update-hook to detect when buffers are displayed."
-  (let ((current-buffer (current-buffer)))
-    (when (and current-buffer
-               (buffer-file-name current-buffer)
-               (not (eq current-buffer codeawareness--active-buffer)))
-      (let ((current-file (buffer-file-name current-buffer))
-            (active-file (when codeawareness--active-buffer
-                           (buffer-file-name codeawareness--active-buffer))))
-        (if (and codeawareness--active-buffer active-file
-                 (string= current-file active-file))
-            ;; Same file, no need to update active buffer
-            (codeawareness-log-info "Same file buffer displayed")
-          ;; Different file or no active buffer, update and refresh
-          (progn
-            (codeawareness-log-info "Buffer displayed: %s" current-file)
-            (setq codeawareness--active-buffer current-buffer)
-            (codeawareness--refresh-active-file)))))))
-
 ;;; Minor Mode
 
 (define-minor-mode codeawareness-mode
-  "Toggle Code Awareness mode. Enable Code Awareness functionality for collaborative development."
+  "Toggle Code Awareness mode. 
+  Enable Code Awareness functionality for collaborative development."
   :init-value nil
   :global t
   :lighter " CAW"
   :group 'codeawareness
-  :keymap (let ((map (make-sparse-keymap)))
-            (define-key map (kbd "C-c C-a t") #'codeawareness-toggle)
-            (define-key map (kbd "C-c C-a x") #'codeawareness-disconnect)
-            (define-key map (kbd "C-c C-a f") #'codeawareness-test-face-colors)
-            (define-key map (kbd "C-c C-a l") #'codeawareness-clear-logs)
-            map)
   (if codeawareness-mode
       (codeawareness--enable)
     (codeawareness--disable)))
@@ -1518,6 +1475,25 @@ FILE-PATH is the file path associated with this request (for validation)."
 
 ;;; Cleanup on Emacs exit
 
+(defun codeawareness--buffer-list-update-hook ()
+  "Hook function for buffer-list-update-hook to detect when buffers are displayed."
+  (let ((current-buffer (current-buffer)))
+    (when (and current-buffer
+               (buffer-file-name current-buffer)
+               (not (eq current-buffer codeawareness--active-buffer)))
+      (let ((current-file (buffer-file-name current-buffer))
+            (active-file (when codeawareness--active-buffer
+                           (buffer-file-name codeawareness--active-buffer))))
+        (if (and codeawareness--active-buffer active-file
+                 (string= current-file active-file))
+            ;; Same file, no need to update active buffer
+            (codeawareness-log-info "Same file buffer displayed")
+          ;; Different file or no active buffer, update and refresh
+          (progn
+            (codeawareness-log-info "Buffer displayed: %s" current-file)
+            (setq codeawareness--active-buffer current-buffer)
+            (codeawareness--refresh-active-file)))))))
+
 (defun codeawareness--cleanup-on-exit ()
   "Cleanup Code Awareness when Emacs is about to exit."
   (when codeawareness-mode
@@ -1526,9 +1502,6 @@ FILE-PATH is the file path associated with this request (for validation)."
     (codeawareness--send-disconnect-messages)
     ;; Force synchronous cleanup to ensure processes are deleted
     (codeawareness--force-cleanup)))
-
-;; Register cleanup functions to run when Emacs exits
-(add-hook 'kill-emacs-hook #'codeawareness--cleanup-on-exit)
 
 ;; Register cleanup functions to run when Emacs exits
 (add-hook 'kill-emacs-hook #'codeawareness--cleanup-on-exit)
