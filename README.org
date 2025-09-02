@@ -1,5 +1,6 @@
 # -*- fill-column: 120 -*-
 #+STARTUP: noinlineimages
+[[https://discord.com/channels/1412284975247790112/1412284976032120888][file:https://img.shields.io/discord/1412284975247790112]]
 
 * Code Awareness - a low noise collaboration toolset for Emacs     :noexport:
 
