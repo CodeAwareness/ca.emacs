@@ -1,8 +1,9 @@
-;;; pipe.el --- Pipes for Emacs -*- lexical-binding: t -*-
+;;; codeawareness-pipe.el --- Pipes for Code Awareness -*- lexical-binding: t -*-
 
 ;; Copyright (C) 2018 Isaac Lewis
 
 ;; Author: Isaac Lewis <isaac.b.lewis@gmail.com>
+;; Maintainer: Mark Vasile <mark@codeawareness.com>
 ;; Version: 1.0.0
 ;; Keywords: comm
 
@@ -26,7 +27,7 @@
 ;; -----------
 ;;
 ;; An (Emacs) pipe is a buffer together with several operations
-;; (pipe-read!, pipe-write!, etc) and has the following properties:
+;; (codeawareness-pipe-read!, codeawareness-pipe-write!, etc) and has the following properties:
 ;;
 ;;     buf_size: the size of the pipe's buffer
 ;;
@@ -106,12 +107,12 @@
 ;;{{{
 ;;; Customizable Variables
 
-(defvar pipe-debug nil "Set to true to log debugging info in the
+(defvar codeawareness-pipe-debug nil "Set to true to log debugging info in the
 *Messages* buffer.")
 
-(defvar pipe-default-buf-size 65536 "The default buffer size for pipes.")
+(defvar codeawareness-pipe-default-buf-size 65536 "The default buffer size for pipes.")
 
-(defvar pipe-default-newline-delim "\n" "This should usually be set
+(defvar codeawareness-pipe-default-newline-delim "\n" "This should usually be set
 to the default newline string used by the OS.")
 
 ;;}}}
@@ -119,24 +120,24 @@ to the default newline string used by the OS.")
 ;;{{{
 ;;; First-class variables
 
-(defun pipe-make-var (val)
+(defun codeawareness-pipe-make-var (val)
   (list val))
 
-(defalias 'pipe-var-ref 'car)
+(defalias 'codeawareness-pipe-var-ref 'car)
 
-(defmacro pipe-set-var! (var new-val)
+(defmacro codeawareness-pipe-set-var! (var new-val)
   `(setf (car ,var) ,new-val))
 
-(defmacro pipe-inc-var! (var amt)
+(defmacro codeawareness-pipe-inc-var! (var amt)
   `(setf (car ,var) (+ (car ,var) ,amt)))
 
-(defmacro pipe-dec-var! (var amt)
+(defmacro codeawareness-pipe-dec-var! (var amt)
   `(setf (car ,var) (- (car ,var) ,amt)))
 
-(defmacro pipe-inc-var-mod-n! (var amt n)
+(defmacro codeawareness-pipe-inc-var-mod-n! (var amt n)
   `(setf (car ,var) (mod (+ (car ,var) ,amt) ,n)))
 
-(defmacro pipe-dec-var-mod-n! (var amt n)
+(defmacro codeawareness-pipe-dec-var-mod-n! (var amt n)
   `(setf (car ,var) (mod (- (car ,var) ,amt) ,n)))
 
 ;;}}}
@@ -144,7 +145,7 @@ to the default newline string used by the OS.")
 ;;{{{
 ;;; Utility functions
 
-(defun pipe-memcpy! (src dest dest-offset)
+(defun codeawareness-pipe-memcpy! (src dest dest-offset)
   "Copy `src' to `dest' starting at offset `dest-offset'; if the
 length of `src' plus `dest-offset' is greater than the length of
 `dest', then the writing wraps.  If `src' is longer then `dest'
@@ -162,7 +163,7 @@ of range, then an invalid offset error is thrown."
 	   (store-substring dest 0 (substring src (- (length dest)
 						     dest-offset))))))
 
-(defun pipe-clockwise-substring (str start end)
+(defun codeawareness-pipe-clockwise-substring (str start end)
   "Return the clockwise-substring of a non-empty string `str'
 that starts at `start' and ends at `end'.  Imagine that the
 characters of `str' are positioned around a 0-based clock with
@@ -198,16 +199,16 @@ The following table gives some examples of clockwise substrings.
 ;;{{{
 ;;; Debugging/logging functions
 
-(defun pipe-debug (fmt-str &rest args)
-  (when pipe-debug
-    (apply 'message (concat "pipe-debug: " fmt-str "\n") args)))
+(defun codeawareness-pipe-debug (fmt-str &rest args)
+  (when codeawareness-pipe-debug
+    (apply 'message (concat "codeawareness-pipe-debug: " fmt-str "\n") args)))
 
 ;;}}}
 
 ;;{{{
 ;;; Private Macros and Functions
 
-(defmacro pipe-with-pipe (pipe &rest body)
+(defmacro codeawareness-pipe-with-pipe (pipe &rest body)
   "Evaluate `body' in the environment of `pipe'."
   `(let* ((env (funcall ,pipe 'env))
 	  (num-writ (cdr (assoc 'num-writ env)))
@@ -223,16 +224,16 @@ The following table gives some examples of clockwise substrings.
 ;;{{{
 ;;; Public API
 
-(defun* pipe-make-pipe (&optional (buf-size pipe-default-buf-size)
+(defun* codeawareness-pipe-make-pipe (&optional (buf-size codeawareness-pipe-default-buf-size)
 			     (underflow-handler
 			      (lambda ()
 				(error "Buffer underflow"))))
   "Create a new pipe."
   (let* ( ;; The environment
-	 (env `((num-writ . ,(pipe-make-var 0))
-		(write-pos . ,(pipe-make-var 0))
-		(num-read . ,(pipe-make-var buf-size))
-		(read-pos . ,(pipe-make-var 0))
+	 (env `((num-writ . ,(codeawareness-pipe-make-var 0))
+		(write-pos . ,(codeawareness-pipe-make-var 0))
+		(num-read . ,(codeawareness-pipe-make-var buf-size))
+		(read-pos . ,(codeawareness-pipe-make-var 0))
 		(buf . ,(make-string buf-size 0))
 		(underflow-handler .,underflow-handler))))
     (lambda (fn-or-var)
@@ -245,63 +246,63 @@ The following table gives some examples of clockwise substrings.
 ;;{{{
 ;;; Accessors
 
-(defun pipe-input-stream (pipe)
+(defun codeawareness-pipe-input-stream (pipe)
   "Return the pipe's input stream.  See Ouput Streams in section
 18.2 of the ELISP reference manual."
   (lambda (&optional unread)
-    (pipe-read! pipe unread)))
+    (codeawareness-pipe-read! pipe unread)))
 
-(defun pipe-output-stream (pipe)
+(defun codeawareness-pipe-output-stream (pipe)
   "Return the pipe's output stream.  See Ouput Streams in section
 18.4 of the ELISP reference manual."
   (lambda (char)
-    (pipe-write! pipe char)))
+    (codeawareness-pipe-write! pipe char)))
 
 ;;}}}
 
 ;;{{{
 ;;; Peeking Functions
 
-(defun pipe-peek (pipe)
+(defun codeawareness-pipe-peek (pipe)
   "Return the next character to be read from pipe, but don't
 modify the pipe."
-  (let ((char (pipe-read! pipe)))
+  (let ((char (codeawareness-pipe-read! pipe)))
     ;; Unread char from pipe
-    (pipe-read! pipe char)
+    (codeawareness-pipe-read! pipe char)
     char))
 
-(defun pipe-peek-ln (pipe)
+(defun codeawareness-pipe-peek-ln (pipe)
   "Return the next line to be read from pipe, but don't modify
   the pipe."
-  (let ((line (pipe-read-ln! pipe)))
+  (let ((line (codeawareness-pipe-read-ln! pipe)))
     (dolist (char (reverse line))
       ;; unread the character
-      (pipe-read! pipe char))))
+      (codeawareness-pipe-read! pipe char))))
 
-(defun pipe-peek-sexp (pipe)
+(defun codeawareness-pipe-peek-sexp (pipe)
   "Return the next sexp to be read from pipe, but don't modify
   the pipe."
-  (let ((sexp (pipe-read-sexp! pipe)))
+  (let ((sexp (codeawareness-pipe-read-sexp! pipe)))
     (dolist (char (reverse sexp))
       ;; unread the character
-      (pipe-read! pipe char))))
+      (codeawareness-pipe-read! pipe char))))
 
-(defun pipe-peek-all (pipe)
+(defun codeawareness-pipe-peek-all (pipe)
   "Return a string containing all of the pipe's currently
   available input, but don't modify the pipe."
-  (pipe-with-pipe
+  (codeawareness-pipe-with-pipe
    pipe
    (let* ((buf-size (length buf))
 	  ;; after-last-pos -- the position just after the last
 	  ;; character to be read
-	  (after-last-pos (mod (+ (pipe-var-ref read-pos)
-				  (pipe-var-ref num-writ))
+	  (after-last-pos (mod (+ (codeawareness-pipe-var-ref read-pos)
+				  (codeawareness-pipe-var-ref num-writ))
 			       buf-size)))
-     (if (> (pipe-var-ref num-writ) 0)
+     (if (> (codeawareness-pipe-var-ref num-writ) 0)
 	 ;; The pipe's available input can only be modeled as a
 	 ;; clockwise substring when the buffer is non-empty.
-	 (pipe-clockwise-substring buf
-				   (pipe-var-ref read-pos)
+	 (codeawareness-pipe-clockwise-substring buf
+				   (codeawareness-pipe-var-ref read-pos)
 				   after-last-pos)
        ""))))
 
@@ -310,7 +311,7 @@ modify the pipe."
 ;;{{{
 ;;; Reading Functions
 
-(defun pipe-read! (pipe &optional unread)
+(defun codeawareness-pipe-read! (pipe &optional unread)
   "Reads a character from `pipe' if `unread' is nil.
 Otherwise it unreads the character `unread' from `pipe'."
   ;; This function must support two kinds of calls:
@@ -320,97 +321,97 @@ Otherwise it unreads the character `unread' from `pipe'."
   ;;
   ;; • When it is called with one argument (always a character), it
   ;;   should save the argument and arrange to return the argument on
-  ;;   the next call.  This is called “unreading” the character; it
+  ;;   the next call.  This is called "unreading" the character; it
   ;;   happens when the Lisp reader reads one character too many and
   ;;   wants to put it back where it came from.  In this case, it
   ;;   makes no difference what value is returned.
-  (pipe-with-pipe
+  (codeawareness-pipe-with-pipe
    pipe
    (let ((buf-size (length buf)))
-     (cond (unread (pipe-debug "unreading %s" unread)
-		   (if (= (pipe-var-ref num-writ) buf-size)
+     (cond (unread (codeawareness-pipe-debug "unreading %s" unread)
+		   (if (= (codeawareness-pipe-var-ref num-writ) buf-size)
 		       (progn (error "Buffer overflow (unread)"))
-		     (prog1 unread (pipe-inc-var! num-read  -1)
-			    (pipe-inc-var! num-writ 1)
+		     (prog1 unread (codeawareness-pipe-inc-var! num-read  -1)
+			    (codeawareness-pipe-inc-var! num-writ 1)
 			    ;; unreading does not alter write-pos
-			    (pipe-dec-var-mod-n! read-pos 1 buf-size))))
-	   ((= (pipe-var-ref num-read) buf-size)
-	    (pipe-debug "handling undeflow")
-	    (pipe-debug "got input %s" (funcall underflow-handler))
-	    (pipe-read! pipe))
-	   (t (let ((res (prog1 (aref buf (pipe-var-ref read-pos))
-			   (pipe-inc-var! num-read  1)
-			   (pipe-inc-var! num-writ -1)
+			    (codeawareness-pipe-dec-var-mod-n! read-pos 1 buf-size))))
+	   ((= (codeawareness-pipe-var-ref num-read) buf-size)
+	    (codeawareness-pipe-debug "handling undeflow")
+	    (codeawareness-pipe-debug "got input %s" (funcall underflow-handler))
+	    (codeawareness-pipe-read! pipe))
+	   (t (let ((res (prog1 (aref buf (codeawareness-pipe-var-ref read-pos))
+			   (codeawareness-pipe-inc-var! num-read  1)
+			   (codeawareness-pipe-inc-var! num-writ -1)
 			   ;; reading does not alter write-pos
-			   (pipe-inc-var-mod-n! read-pos 1 buf-size))))
-		(pipe-debug "read %c" res)
+			   (codeawareness-pipe-inc-var-mod-n! read-pos 1 buf-size))))
+		(codeawareness-pipe-debug "read %c" res)
 		res))))))
 
-(defun pipe-read-ln! (pipe)
+(defun codeawareness-pipe-read-ln! (pipe)
   "Read a line from `pipe'."
   (let ((chars '()))
     (while (not (funcall (lambda (chars)
-			   (string-suffix-p pipe-default-newline-delim
+			   (string-suffix-p codeawareness-pipe-default-newline-delim
 					    (concat chars)))
-			 (setq chars (append chars (list (pipe-read! pipe)))))))
+			 (setq chars (append chars (list (codeawareness-pipe-read! pipe)))))))
     (concat chars)))
 
-(defun pipe-read-sexp! (pipe)
+(defun codeawareness-pipe-read-sexp! (pipe)
   "Read an sexp from `pipe'."
   (read (lambda (&optional unread)
-	  (pipe-read! pipe unread))))
+	  (codeawareness-pipe-read! pipe unread))))
 
-(defun pipe-read-all! (pipe)
+(defun codeawareness-pipe-read-all! (pipe)
   "Reads all currently available characters from `pipe' into a
 string."
-  (pipe-with-pipe
+  (codeawareness-pipe-with-pipe
    pipe
    (let* ((buf-size (length buf))
-	  (after-last-pos (mod (+ (pipe-var-ref read-pos)
-				  (pipe-var-ref num-writ))
+	  (after-last-pos (mod (+ (codeawareness-pipe-var-ref read-pos)
+				  (codeawareness-pipe-var-ref num-writ))
 			       buf-size)))
      ;; after-last-pos -- the position just after the last
      ;; character to be read
      (prog1
-	 (if (< after-last-pos (pipe-var-ref read-pos))
-	     (concat (substring-no-properties buf (pipe-var-ref read-pos))
+	 (if (< after-last-pos (codeawareness-pipe-var-ref read-pos))
+	     (concat (substring-no-properties buf (codeawareness-pipe-var-ref read-pos))
 		     (substring-no-properties buf 0 after-last-pos))
-	   (substring-no-properties buf (pipe-var-ref read-pos) after-last-pos))
-       (pipe-inc-var-mod-n! read-pos (pipe-var-ref num-writ) buf-size)
-       (pipe-set-var! num-read buf-size)
+	   (substring-no-properties buf (codeawareness-pipe-var-ref read-pos) after-last-pos))
+       (codeawareness-pipe-inc-var-mod-n! read-pos (codeawareness-pipe-var-ref num-writ) buf-size)
+       (codeawareness-pipe-set-var! num-read buf-size)
        ;; reading does not alter the write position
-       (pipe-set-var! num-writ 0)))))
+       (codeawareness-pipe-set-var! num-writ 0)))))
 ;;}}}
 
 ;;{{{
 ;;; Writing Functions
 
-(defun pipe-write! (pipe char-or-str)
+(defun codeawareness-pipe-write! (pipe char-or-str)
   "Writes the `char-or-str' to `pipe'."
   (let ((str (if (characterp char-or-str)
 		 (char-to-string char-or-str)
 	       char-or-str)))
-   (pipe-with-pipe
+   (codeawareness-pipe-with-pipe
     pipe
     (let ((buf-size (length buf)))
-      (cond ((> (+ (pipe-var-ref num-writ) (length str)) buf-size)
+      (cond ((> (+ (codeawareness-pipe-var-ref num-writ) (length str)) buf-size)
 	     (error "Buffer overflow"))
 	    (t
-	     (pipe-debug "wrote '%s'" str)
-	     (prog1 (pipe-memcpy! str buf (pipe-var-ref write-pos))
-	       (pipe-inc-var! num-writ (length str))
-	       (pipe-dec-var! num-read (length str))
+	     (codeawareness-pipe-debug "wrote '%s'" str)
+	     (prog1 (codeawareness-pipe-memcpy! str buf (codeawareness-pipe-var-ref write-pos))
+	       (codeawareness-pipe-inc-var! num-writ (length str))
+	       (codeawareness-pipe-dec-var! num-read (length str))
 	       ;; writing does not alter the read position
-	       (pipe-inc-var-mod-n! write-pos (length str) buf-size))))))))
+	       (codeawareness-pipe-inc-var-mod-n! write-pos (length str) buf-size))))))))
 
-(defun pipe-write-ln! (pipe &optional string)
+(defun codeawareness-pipe-write-ln! (pipe &optional string)
   "Write `string' followed by a new line delimiter to `pipe'."
-  (pipe-write! pipe (concat (or string "") pipe-default-newline-delim)))
+  (codeawareness-pipe-write! pipe (concat (or string "") codeawareness-pipe-default-newline-delim)))
 
-(defun pipe-write-sexp! (pipe sexp)
+(defun codeawareness-pipe-write-sexp! (pipe sexp)
   "Write `string' followed by a new line delimiter to `pipe'."
-  (prin1 sexp (lambda (c) (pipe-write! pipe c)))
-  (pipe-write! pipe " "))
+  (prin1 sexp (lambda (c) (codeawareness-pipe-write! pipe c)))
+  (codeawareness-pipe-write! pipe " "))
 
 ;;}}}
 
@@ -418,5 +419,5 @@ string."
 
 ;;}}}
 
-(provide 'pipe)
-;;; pipe.el ends here
+(provide 'codeawareness-pipe)
+;;; codeawareness-pipe.el ends here

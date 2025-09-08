@@ -1,8 +1,9 @@
-;;; process-sockets.el --- Process sockets for Emacs  -*- lexical-binding: t -*-
+;;; codeawareness-process-sockets.el --- Process sockets for Code Awareness  -*- lexical-binding: t -*-
 
 ;; Copyright (C) 2018 Isaac Lewis
 
 ;; Author: Isaac Lewis <isaac.b.lewis@gmail.com>
+;; Maintainer: Mark Vasile <mark@codeawareness.com>
 ;; Version: 1.0.0
 ;; Keywords: processes, comm
 
@@ -22,7 +23,7 @@
 
 ;;; Commentary:
 
-;; Process sockets for Emacs
+;; Process sockets for Code Awareness
 ;;
 ;; See the documentation at https://github.com/IkeLewis/process-sockets
 ;;
@@ -33,23 +34,23 @@
 
 ;; For 'defun*'
 (require 'cl)
-;; For 'pipe-make-pipe'
-(require 'pipe)
+;; For 'codeawareness-pipe-make-pipe'
+(require 'codeawareness-pipe)
 
 ;;; API Functions
 
 ;;; Constructor(s)
 
-(defun* ps-make-process-socket (process &optional (pipe-buf-size pipe-default-buf-size))
+(defun* codeawareness-ps-make-process-socket (process &optional (pipe-buf-size codeawareness-pipe-default-buf-size))
   "Creates a socket for communicating with `process'."
-  (unless (>= emacs-major-version 26)
-    (error "Emacs 26+ is required"))
+  (unless (>= emacs-major-version 27)
+    (error "Emacs 27+ is required"))
   (let* ((process process)
 	 (sock-mutex (make-mutex))
 	 (sock-output-ready nil)
 	 (sock-cv-output-ready
 	  (make-condition-variable sock-mutex "sock-cv-output-ready"))
-	 (input-pipe (pipe-make-pipe
+	 (input-pipe (codeawareness-pipe-make-pipe
 		      pipe-buf-size
 		      (lambda ()
 			(if (equal (current-thread)
@@ -65,12 +66,12 @@
 			    (while (not sock-output-ready)
 			      (condition-wait sock-cv-output-ready))
 			    (setq sock-output-ready nil))))))
-	 (output-pipe (pipe-make-pipe pipe-buf-size))
+	 (output-pipe (codeawareness-pipe-make-pipe pipe-buf-size))
 	 (auto-flush nil))
     ;; Write output from the process to the socket's input stream.
     (set-process-filter process (lambda (process string)
 				  (with-mutex sock-mutex
-				    (pipe-write! input-pipe string)
+				    (codeawareness-pipe-write! input-pipe string)
 				    (setq sock-output-ready t)
 				    (condition-notify sock-cv-output-ready t))))
     (lambda (fn-or-var &rest args)
@@ -92,60 +93,60 @@
 
 ;;; Accessors
 
-(defun ps-input-stream (ps)
-  (pipe-input-stream (funcall ps 'input-pipe)))
+(defun codeawareness-ps-input-stream (ps)
+  (codeawareness-pipe-input-stream (funcall ps 'input-pipe)))
 
-(defun ps-output-stream (ps)
-  (pipe-output-stream (funcall ps 'output-pipe)))
+(defun codeawareness-ps-output-stream (ps)
+  (codeawareness-pipe-output-stream (funcall ps 'output-pipe)))
 
-(defun ps-auto-flush (ps)
+(defun codeawareness-ps-auto-flush (ps)
   (funcall ps 'auto-flush))
 
 ;;; Mutators
 
-(defun ps-set-auto-flush! (ps val)
+(defun codeawareness-ps-set-auto-flush! (ps val)
   (funcall ps 'set-auto-flush! val))
 
 ;;; Reading Functions
 
-(defun ps-read! (ps)
-  (pipe-read! (funcall ps 'input-pipe)))
+(defun codeawareness-ps-read! (ps)
+  (codeawareness-pipe-read! (funcall ps 'input-pipe)))
 
-(defun ps-read-ln! (ps)
-  (pipe-read-ln! (funcall ps 'input-pipe)))
+(defun codeawareness-ps-read-ln! (ps)
+  (codeawareness-pipe-read-ln! (funcall ps 'input-pipe)))
 
-(defun ps-read-all! (ps)
-  (pipe-read-all! (funcall ps 'input-pipe)))
+(defun codeawareness-ps-read-all! (ps)
+  (codeawareness-pipe-read-all! (funcall ps 'input-pipe)))
 
-(defun ps-read-sexp! (ps)
-  (pipe-read-sexp! (funcall ps 'input-pipe)))
+(defun codeawareness-ps-read-sexp! (ps)
+  (codeawareness-pipe-read-sexp! (funcall ps 'input-pipe)))
 
 ;;; Writing Functions
 
-(defun ps-write! (ps char-or-str)
-  (pipe-write! (funcall ps 'output-pipe) char-or-str)
-  (when (ps-auto-flush ps)
-    (ps-flush! ps)))
+(defun codeawareness-ps-write! (ps char-or-str)
+  (codeawareness-pipe-write! (funcall ps 'output-pipe) char-or-str)
+  (when (codeawareness-ps-auto-flush ps)
+    (codeawareness-ps-flush! ps)))
 
-(defun ps-write-ln! (ps &optional char-or-str)
-  (pipe-write-ln! (funcall ps 'output-pipe) char-or-str)
-  (when (ps-auto-flush ps)
-    (ps-flush! ps)))
+(defun codeawareness-ps-write-ln! (ps &optional char-or-str)
+  (codeawareness-pipe-write-ln! (funcall ps 'output-pipe) char-or-str)
+  (when (codeawareness-ps-auto-flush ps)
+    (codeawareness-ps-flush! ps)))
 
-(defun ps-write-sexp! (ps sexp)
-  (pipe-write-sexp! (funcall ps 'output-pipe) sexp)
-  (when (ps-auto-flush ps)
-    (ps-flush! ps)))
+(defun codeawareness-ps-write-sexp! (ps sexp)
+  (codeawareness-pipe-write-sexp! (funcall ps 'output-pipe) sexp)
+  (when (codeawareness-ps-auto-flush ps)
+    (codeawareness-ps-flush! ps)))
 
-(defun ps-flush! (ps)
+(defun codeawareness-ps-flush! (ps)
   (process-send-string (funcall ps 'process)
-		       (pipe-read-all! (funcall ps 'output-pipe))))
+		       (codeawareness-pipe-read-all! (funcall ps 'output-pipe))))
 
 ;;; Misc Functions
 
-(defun ps-close! (ps)
-  (ps-flush! ps)
+(defun codeawareness-ps-close! (ps)
+  (codeawareness-ps-flush! ps)
   (delete-process (funcall ps 'process)))
 
-(provide 'process-sockets)
-;;; process-sockets.el ends here
+(provide 'codeawareness-process-sockets)
+;;; codeawareness-process-sockets.el ends here

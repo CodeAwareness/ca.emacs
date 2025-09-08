@@ -1,8 +1,9 @@
-;;; list-pipe.el --- List-Pipes for Emacs -*- lexical-binding: t -*-
+;;; codeawareness-list-pipe.el --- List-Pipes for Code Awareness -*- lexical-binding: t -*-
 
 ;; Copyright (C) 2018 Isaac Lewis
 
 ;; Author: Isaac Lewis <isaac.b.lewis@gmail.com>
+;; Maintainer: Mark Vasile <mark@codeawareness.com>
 ;; Version: 1.0.0
 ;; Keywords: comm
 
@@ -27,51 +28,51 @@
 ;; Code:
 
 ;;; Required Libraries
-;; For 'pipe-default-newline-delim'
-(require 'pipe)
+;; For 'codeawareness-pipe-default-newline-delim'
+(require 'codeawareness-pipe)
 
 ;;{{{
 ;;; Customization Variables
 
-(defvar list-pipe-debug nil "Whether or not to print debugging
+(defvar codeawareness-list-pipe-debug nil "Whether or not to print debugging
 messages.")
 
-(defvar list-pipe-default-underflow-handler (lambda () (error "Underflow")))
+(defvar codeawareness-list-pipe-default-underflow-handler (lambda () (error "Underflow")))
 
 ;;}}}
 
 ;;{{{
 ;;; List Pipe Functions & Macros
 
-(defun list-pipe-make-list-pipe ()
+(defun codeawareness-list-pipe-make-list-pipe ()
   "Make a list-based pipe."
   nil)
 
 ;;{{{
 ;;; Peeking Functions
 
-(defun list-pipe-peek (list-pipe)
+(defun codeawareness-list-pipe-peek (list-pipe)
   "Return the next character to be read from pipe, but don't
 modify the pipe."
   (car list-pipe))
 
-(defun list-pipe-ln (list-pipe)
+(defun codeawareness-list-pipe-ln (list-pipe)
   "Return the next line to be read from pipe, but don't modify the
   pipe."
-  (let ((line (list-pipe-read-ln! list-pipe)))
+  (let ((line (codeawareness-list-pipe-read-ln! list-pipe)))
     (dolist (char (reverse line))
       ;; unread the character
-      (list-pipe-read! list-pipe char))))
+      (codeawareness-list-pipe-read! list-pipe char))))
 
-(defun list-pipe-sexp (list-pipe)
+(defun codeawareness-list-pipe-sexp (list-pipe)
   "Return the next sexp to be read from pipe, but don't modify
   the pipe."
-  (let ((sexp (list-pipe-read-sexp! list-pipe)))
+  (let ((sexp (codeawareness-list-pipe-read-sexp! list-pipe)))
     (dolist (char (reverse sexp))
       ;; unread the character
-      (list-pipe-read! list-pipe char))))
+      (codeawareness-list-pipe-read! list-pipe char))))
 
-(defun list-pipe-peek-all (list-pipe)
+(defun codeawareness-list-pipe-peek-all (list-pipe)
   "Return a string containing all of `list-pipe's currently
   available input, but don't modify `list-pipe'."
   (concat list-pipe))
@@ -81,7 +82,7 @@ modify the pipe."
 ;;{{{
 ;;; Reading Macros
 
-(defmacro list-pipe-read! (list-pipe &optional unread underflow-handler)
+(defmacro codeawareness-list-pipe-read! (list-pipe &optional unread underflow-handler)
   "Read a character from `list-pipe'."
   `(progn
      (unless (listp ,list-pipe)
@@ -100,26 +101,26 @@ modify the pipe."
 	   (push _unread2 ,list-pipe)
 	 (or (pop ,list-pipe)
 	     (funcall (or ,underflow-handler
-			  list-pipe-default-underflow-handler)))))))
+			  codeawareness-list-pipe-default-underflow-handler)))))))
 
-(defmacro list-pipe-read-ln! (list-pipe)
+(defmacro codeawareness-list-pipe-read-ln! (list-pipe)
   "Read a line from `list-pipe'."
   `(let ((chars '()))
      (while (not
 	     (funcall (lambda (chars)
-			(string-suffix-p pipe-default-newline-delim
+			(string-suffix-p codeawareness-pipe-default-newline-delim
 					 (concat chars)))
 		      (setf chars (append chars
-					  (list (list-pipe-read! ,list-pipe)))))))
+					  (list (codeawareness-list-pipe-read! ,list-pipe)))))))
      (concat chars)))
 
-(defmacro list-pipe-read-sexp! (list-pipe)
+(defmacro codeawareness-list-pipe-read-sexp! (list-pipe)
   "Read an sexp from `list-pipe'."
   `(read (lambda (&optional unread)
-	   (list-pipe-read! ,list-pipe unread))))
+	   (codeawareness-list-pipe-read! ,list-pipe unread))))
 
 
-(defmacro list-pipe-read-all! (list-pipe &optional unread)
+(defmacro codeawareness-list-pipe-read-all! (list-pipe &optional unread)
   "Read all available characters from `list-pipe'."
   `(prog1
        (concat ,list-pipe)
@@ -130,7 +131,7 @@ modify the pipe."
 ;;{{{
 ;;; Writing Macros
 
-(defmacro list-pipe-write! (list-pipe str-or-char)
+(defmacro codeawareness-list-pipe-write! (list-pipe str-or-char)
   "Write a character to `list-pipe'."
   `(progn
      (unless (listp ,list-pipe)
@@ -142,15 +143,15 @@ modify the pipe."
 	   (t
 	    (error "str-or-char must be a string or character")))))
 
-(defmacro list-pipe-write-ln! (list-pipe &optional str-or-char)
+(defmacro codeawareness-list-pipe-write-ln! (list-pipe &optional str-or-char)
   "Write `string' followed by a new line delimiter to `pipe'."
-  `(list-pipe-write! ,list-pipe (concat ,(or str-or-char "")
-					pipe-default-newline-delim)))
+  `(codeawareness-list-pipe-write! ,list-pipe (concat ,(or str-or-char "")
+					codeawareness-pipe-default-newline-delim)))
 
-(defmacro list-pipe-write-sexp! (list-pipe sexp)
+(defmacro codeawareness-list-pipe-write-sexp! (list-pipe sexp)
   "Write `string' followed by a new line delimiter to `pipe'."
-  `(progn (list-pipe-write! ,list-pipe (prin1-to-string ,sexp))
-	  (list-pipe-write! ,list-pipe " ")))
+  `(progn (codeawareness-list-pipe-write! ,list-pipe (prin1-to-string ,sexp))
+	  (codeawareness-list-pipe-write! ,list-pipe " ")))
 
 ;;}}}
 
@@ -158,5 +159,5 @@ modify the pipe."
 
 ;;}}}
 
-(provide 'list-pipe)
-;;; list-pipe.el ends here
+(provide 'codeawareness-list-pipe)
+;;; codeawareness-list-pipe.el ends here

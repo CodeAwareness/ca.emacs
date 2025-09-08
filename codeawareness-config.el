@@ -35,43 +35,49 @@
 (defconst codeawareness--pipe-catalog "catalog"
   "Catalog pipe name.")
 
-;;; Configuration
-
+;;;###autoload
 (defgroup codeawareness-config nil
   "Code Awareness configuration."
   :group 'codeawareness
   :prefix "codeawareness-")
 
+;;;###autoload
 (defcustom codeawareness-catalog "catalog"
   "Catalog name for Code Awareness."
   :type 'string
   :group 'codeawareness-config)
 
+;;;###autoload
 (defcustom codeawareness-highlight-intensity 0.3
   "Intensity of highlighting (0.0 to 1.0)."
   :type 'number
   :group 'codeawareness-config)
 
+;;;###autoload
 (defcustom codeawareness-highlight-refresh-delay 0.5
   "Delay in seconds before refreshing highlights after changes."
   :type 'number
   :group 'codeawareness-config)
 
+;;;###autoload
 (defcustom codeawareness-highlight-persistent nil
   "Whether highlights should persist across buffer switches."
   :type 'boolean
   :group 'codeawareness-config)
 
+;;;###autoload
 (defcustom codeawareness-full-width-highlights t
   "Whether to use full-width highlights that extend to the end of the line."
   :type 'boolean
   :group 'codeawareness-config)
 
+;;;###autoload
 (defcustom codeawareness-update-delay 0.5
   "Delay in seconds before running a Code Awareness update."
   :type 'number
   :group 'codeawareness-config)
 
+;;;###autoload
 (defcustom codeawareness-debug nil
   "Enable debug mode for Code Awareness."
   :type 'boolean
@@ -79,31 +85,37 @@
 
 ;;; Theme Support
 
+;;;###autoload
 (defcustom codeawareness-change-color-light "#00b1a420"
   "Color for changed lines in light theme."
   :type 'string
   :group 'codeawareness-config)
 
+;;;###autoload
 (defcustom codeawareness-change-color-dark "#03445f"
   "Color for changed lines in dark theme."
   :type 'string
   :group 'codeawareness-config)
 
+;;;###autoload
 (defcustom codeawareness-peer-color-light "#ffdd34"
   "Color for peer code in light theme."
   :type 'string
   :group 'codeawareness-config)
 
+;;;###autoload
 (defcustom codeawareness-peer-color-dark "#1f1cc2"
   "Color for peer code in dark theme."
   :type 'string
   :group 'codeawareness-config)
 
+;;;###autoload
 (defcustom codeawareness-merge-color-light "#ffc000"
   "Color for merged code in light theme."
   :type 'string
   :group 'codeawareness-config)
 
+;;;###autoload
 (defcustom codeawareness-merge-color-dark "#141299"
   "Color for merged code in dark theme."
   :type 'string

@@ -1,11 +1,11 @@
-;;; codeawareness.el --- Code Awareness for Emacs -*- lexical-binding: t -*-
+;;; codeawareness.el --- Code Awareness collaboration package -*- lexical-binding: t -*-
 
 ;; Author: Mark Vasile <mark@codeawareness.com>
-;; Package-Requires: ((emacs "26.1"))
+;; Package-Requires: ((emacs "27.1"))
 ;; Keywords: code awareness, collaboration, development, convenience tools
 ;; Homepage: https://github.com/CodeAwareness/ca.emacs
 
-;; Version: 1.0
+;; Version: 1.0.0
 
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -20,8 +20,6 @@
 ;; You should have received a copy of the GNU General Public License
 ;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-;; This file is part of GNU Emacs.
-;;
 ;; This package is licensed under GPLv3. It depends on the Code Awareness
 ;; binary, available at https://codeawareness.com
 
@@ -38,6 +36,9 @@
 (require 'cl-lib)
 (require 'codeawareness-config)
 (require 'codeawareness-logger)
+(require 'codeawareness-pipe)
+(require 'codeawareness-list-pipe)
+(require 'codeawareness-process-sockets)
 (require 'hl-line nil t)
 
 ;;; Customization
@@ -99,7 +100,7 @@
 (defvar codeawareness--color-theme 1
   "Current color theme (1=Light, 2=Dark, 3=High Contrast).")
 
-(defvar codeawareness--tmp-dir "/tmp/caw.emacs"
+(defvar codeawareness--tmp-dir (expand-file-name "caw.emacs" (temporary-file-directory))
   "Temporary directory for Code Awareness.")
 
 (defvar codeawareness--peer-fs (make-hash-table :test 'equal)
@@ -197,7 +198,7 @@ Argument HANDLER-FUNCTION a ref to the function that should handle the event."
         codeawareness--active-selections nil
         codeawareness--selected-peer nil
         codeawareness--color-theme 1
-        codeawareness--tmp-dir "/tmp/caw.emacs"
+        codeawareness--tmp-dir (expand-file-name "caw.emacs" (temporary-file-directory))
         codeawareness--peer-fs (make-hash-table :test 'equal)
         codeawareness--poll-attempts 0)
   (codeawareness--init-store))
@@ -1220,17 +1221,20 @@ Argument ERROR-DATA error message received from the request."
 
 ;;; Public API
 
+;;;###autoload
 (defun codeawareness-refresh ()
   "Refresh Code Awareness data."
   (interactive)
   (codeawareness--refresh-active-file))
 
+;;;###autoload
 (defun codeawareness-clear-all-highlights ()
   "Clear all Code Awareness highlight from all buffers."
   (interactive)
   (codeawareness--clear-all-highlights)
   (message "Cleared all highlights"))
 
+;;;###autoload
 (defun codeawareness-auth-status ()
   "Show the current authentication status."
   (interactive)
@@ -1238,6 +1242,7 @@ Argument ERROR-DATA error message received from the request."
       (message "Authenticated as %s" (alist-get 'name codeawareness--user))
     (message "Not authenticated")))
 
+;;;###autoload
 (defun codeawareness-connection-status ()
   "Show the current connection status."
   (interactive)
@@ -1251,6 +1256,7 @@ Argument ERROR-DATA error message received from the request."
 
 ;;; Reinit on Emacs restart
 
+;;;###autoload
 (defun codeawareness-reinit-faces ()
   "Force reinitialize hl-line faces."
   (interactive)
@@ -1261,6 +1267,7 @@ Argument ERROR-DATA error message received from the request."
 
 ;;; Minor Mode
 
+;;;###autoload
 (define-minor-mode codeawareness-mode
   "Toggle Code Awareness mode.
 Enable Code Awareness functionality for collaborative development."
@@ -1268,6 +1275,7 @@ Enable Code Awareness functionality for collaborative development."
   :global t
   :lighter " CAW"
   :group 'codeawareness
+  :require 'codeawareness
   (if codeawareness-mode
       (codeawareness--enable)
     (codeawareness--disable)))
@@ -1282,6 +1290,7 @@ Enable Code Awareness functionality for collaborative development."
   (add-hook 'after-save-hook #'codeawareness--after-save-hook)
   (add-hook 'post-command-hook #'codeawareness--post-command-hook)
   (add-hook 'buffer-list-update-hook #'codeawareness--buffer-list-update-hook)
+  (add-hook 'kill-emacs-hook #'codeawareness--cleanup-on-exit)
   ;; Set the current buffer as active if it has a file (like VSCode's activeTextEditor)
   (when (and (current-buffer) (buffer-file-name (current-buffer)))
     (setq codeawareness--active-buffer (current-buffer)))
@@ -1295,6 +1304,7 @@ Enable Code Awareness functionality for collaborative development."
   (remove-hook 'after-save-hook #'codeawareness--after-save-hook)
   (remove-hook 'post-command-hook #'codeawareness--post-command-hook)
   (remove-hook 'buffer-list-update-hook #'codeawareness--buffer-list-update-hook)
+  (remove-hook 'kill-emacs-hook #'codeawareness--cleanup-on-exit)
 
   ;; Clear all highlights
   (codeawareness--clear-all-highlights)
@@ -1339,8 +1349,7 @@ Enable Code Awareness functionality for collaborative development."
     ;; Force synchronous cleanup to ensure processes are deleted
     (codeawareness--force-cleanup)))
 
-;; Register cleanup functions to run when Emacs exits
-(add-hook 'kill-emacs-hook #'codeawareness--cleanup-on-exit)
+;; Note: kill-emacs-hook is added in codeawareness--enable, not at load time
 
 ;;; Provide
 

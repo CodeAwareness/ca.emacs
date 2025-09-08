@@ -134,3 +134,5 @@ If you want to delve into the codeawareness' code base, check out [[https://gith
  - emacs >= 26.1 (>= 27.1 for tab-bar)
  - dex
  - shasht
+ 
+We're also embedding the [[https://github.com/IkeLewis/process-sockets][process-sockets package]] which should be published to MELPA soon, at which point CodeAwareness package will also be updated to depend on it.

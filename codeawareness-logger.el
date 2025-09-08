@@ -69,7 +69,7 @@
 (defun codeawareness-log-error (message &rest args)
   "Log an error message."
   (when (codeawareness--should-log 'error)
-    (let* ((timestamp (format-time-string "%Y-%m-%d %H:%M:%S"))
+    (let* ((timestamp (format-time-string "%F %T"))
            (formatted-message (if args 
                                    (apply #'format message args) 
                                  message))
@@ -80,7 +80,7 @@
 (defun codeawareness-log-warn (message &rest args)
   "Log a warning message."
   (when (codeawareness--should-log 'warn)
-    (let* ((timestamp (format-time-string "%Y-%m-%d %H:%M:%S"))
+    (let* ((timestamp (format-time-string "%F %T"))
            (formatted-message (if args 
                                    (apply #'format message args) 
                                  message))
@@ -90,7 +90,7 @@
 (defun codeawareness-log-info (message &rest args)
   "Log an info message."
   (when (codeawareness--should-log 'info)
-    (let* ((timestamp (format-time-string "%Y-%m-%d %H:%M:%S"))
+    (let* ((timestamp (format-time-string "%F %T"))
            (formatted-message (if args 
                                    (apply #'format message args) 
                                  message))
@@ -100,7 +100,7 @@
 (defun codeawareness-log (message &rest args)
   "Log a general message."
   (when (codeawareness--should-log 'log)
-    (let* ((timestamp (format-time-string "%Y-%m-%d %H:%M:%S"))
+    (let* ((timestamp (format-time-string "%F %T"))
            (formatted-message (if args 
                                    (apply #'format message args) 
                                  message))
@@ -110,7 +110,7 @@
 (defun codeawareness-log-debug (message &rest args)
   "Log a debug message."
   (when (and codeawareness-debug (codeawareness--should-log 'debug))
-    (let* ((timestamp (format-time-string "%Y-%m-%d %H:%M:%S"))
+    (let* ((timestamp (format-time-string "%F %T"))
            (formatted-message (if args 
                                    (apply #'format message args) 
                                  message))
