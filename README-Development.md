@@ -22,7 +22,7 @@ Code Awareness for Emacs is now a **fully functional implementation** that provi
 - **Performance Optimized**: Efficient overlay management and cleanup
 
 ### **Phase 3: Editor Integration** - COMPLETE
-- **Minor Mode**: Full `codeawareness-mode` with proper enable/disable
+- **Minor Mode**: Full `code-awareness-mode` with proper enable/disable
 - **Command System**: Interactive commands for all major functions
 - **Status Integration**: Integration with Emacs status bar and hooks
 
@@ -56,12 +56,10 @@ Code Awareness for Emacs is now a **fully functional implementation** that provi
 
 ```elisp
 ;; Code Awareness Configuration
-(let ((codeawareness-path "/path/to/ca.emacs/"))
-  (when (file-exists-p codeawareness-path)
-    (add-to-list 'load-path (expand-file-name "src/elisp" codeawareness-path))
-    (require 'codeawareness-config)
-    (require 'codeawareness-logger)
-    (require 'codeawareness)
+(let ((code-awareness-path "/path/to/ca.emacs/"))
+  (when (file-exists-p code-awareness-path)
+    (add-to-list 'load-path (expand-file-name "src/elisp" code-awareness-path))
+    (require 'code-awareness)
     (message "Code Awareness loaded successfully")))
 ```
 
@@ -72,12 +70,10 @@ Add to your `~/.spacemacs` file in the `dotspacemacs/user-config` section:
 ```elisp
 (defun dotspacemacs/user-config ()
   ;; Code Awareness Configuration
-  (let ((codeawareness-path "/path/to/ca.emacs/"))
-    (when (file-exists-p codeawareness-path)
-      (add-to-list 'load-path (expand-file-name "src/elisp" codeawareness-path))
-      (require 'codeawareness-config)
-      (require 'codeawareness-logger)
-      (require 'codeawareness)
+  (let ((code-awareness-path "/path/to/ca.emacs/"))
+    (when (file-exists-p code-awareness-path)
+      (add-to-list 'load-path (expand-file-name "src/elisp" code-awareness-path))
+      (require 'code-awareness)
       (message "Code Awareness loaded successfully"))))
 ```
 
@@ -98,38 +94,38 @@ Emacs automatically loads the compiled `.elc` files when available.
 
 ```elisp
 ;; Catalog file name (default: "catalog")
-(setq codeawareness-catalog "my-catalog")
+(setq code-awareness-catalog "my-catalog")
 
 ;; Update delay in seconds (default: 0.5)
-(setq codeawareness-update-delay 0.5)
+(setq code-awareness-update-delay 0.5)
 
 ;; Enable debug mode (default: nil)
-(setq codeawareness-debug t)
+(setq code-awareness-debug t)
 ```
 
 ### Theme Colors
 
 ```elisp
 ;; Change colors for different themes
-(setq codeawareness-change-color-light "#00b1a420")
-(setq codeawareness-change-color-dark "#03445f")
-(setq codeawareness-peer-color-light "#ffdd34")
-(setq codeawareness-peer-color-dark "#1f1cc2")
-(setq codeawareness-merge-color-light "#ffc000")
-(setq codeawareness-merge-color-dark "#141299")
+(setq code-awareness-change-color-light "#00b1a420")
+(setq code-awareness-change-color-dark "#03445f")
+(setq code-awareness-peer-color-light "#ffdd34")
+(setq code-awareness-peer-color-dark "#1f1cc2")
+(setq code-awareness-merge-color-light "#ffc000")
+(setq code-awareness-merge-color-dark "#141299")
 ```
 
 ## Usage
 
 ### Commands
 
-- `M-x codeawareness-mode` - Toggle Code Awareness mode
-- `M-x codeawareness-refresh` - Refresh Code Awareness data
-- `M-x codeawareness-clear-all-highlights` - Clear highlights from all buffers
-- `M-x codeawareness-auth-status` - Show authentication status
-- `M-x codeawareness-connection-status` - Show connection status
-- `M-x codeawareness-show-log-buffer` - Show the log buffer
-- `M-x codeawareness-clear-log-buffer` - Clears the log buffer
+- `M-x code-awareness-mode` - Toggle Code Awareness mode
+- `M-x code-awareness-refresh` - Refresh Code Awareness data
+- `M-x code-awareness-clear-all-highlights` - Clear highlights from all buffers
+- `M-x code-awareness-auth-status` - Show authentication status
+- `M-x code-awareness-connection-status` - Show connection status
+- `M-x code-awareness-show-log-buffer` - Show the log buffer
+- `M-x code-awareness-clear-log-buffer` - Clears the log buffer
 
 ## Architecture
 
@@ -201,12 +197,12 @@ make test       # Run the test suite
 
 2. **Enable debug mode**:
    ```elisp
-   (setq codeawareness-debug t)
+   (setq code-awareness-debug t)
    ```
 
 3. **View logs**:
    ```elisp
-   M-x codeawareness-show-log-buffer
+   M-x code-awareness-show-log-buffer
    ```
 
 ### Common Issues
@@ -214,7 +210,7 @@ make test       # Run the test suite
 - **"Connection failed"**: Code Awareness application not running
 - **"Unknown message format"**: Protocol mismatch with Code Awareness application
 - **"Socket error"**: Permission issues with socket files
-- **Highlights not appearing**: Check if `codeawareness-mode` is enabled
+- **Highlights not appearing**: Check if `code-awareness-mode` is enabled
 
 ## Future Enhancements
 

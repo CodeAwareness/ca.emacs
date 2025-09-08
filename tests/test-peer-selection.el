@@ -2,7 +2,7 @@
 
 ;; This file tests the peer selection functionality in CodeAwareness for Emacs
 
-(require 'codeawareness)
+(require 'code-awareness)
 
 (defun test-peer-selection-handling ()
   "Test that peer selection messages are handled correctly."
@@ -10,19 +10,19 @@
                           (name . "Alice")
                           (company . "Code Awareness")
                           (phone . "123-123-1234")
-                          (email . "alice@codeawareness.com")
+                          (email . "alice@code-awareness.com")
                           (createdAt . "2025-02-24T08:56:18.540Z")
                           (active . t)
                           (updatedAt . "2025-08-29T00:38:56.447Z")
                           (lang . "en"))))
     ;; Test peer selection
-    (codeawareness--handle-peer-select test-peer-data)
-    (assert (equal codeawareness--selected-peer test-peer-data)
+    (code-awareness--handle-peer-select test-peer-data)
+    (assert (equal code-awareness--selected-peer test-peer-data)
             "Selected peer should be set correctly")
     
     ;; Test peer unselection
-    (codeawareness--handle-peer-unselect)
-    (assert (null codeawareness--selected-peer)
+    (code-awareness--handle-peer-unselect)
+    (assert (null code-awareness--selected-peer)
             "Selected peer should be cleared on unselect")
     
     (message "Peer selection tests passed!")))
@@ -39,7 +39,7 @@
       (insert "Hello from user\nThis is line 2\nAnd this is line 3\n"))
     
     ;; Test diff view creation
-    (codeawareness--open-diff-view test-peer-file test-user-file test-title)
+    (code-awareness--open-diff-view test-peer-file test-user-file test-title)
     
     ;; Check if diff buffer was created
     (let ((diff-buffer (get-buffer "*CodeAwareness Diff: Test Diff*")))
@@ -47,7 +47,7 @@
       (assert (buffer-live-p diff-buffer) "Diff buffer should be live"))
     
     ;; Clean up
-    (codeawareness--close-diff-buffers)
+    (code-awareness--close-diff-buffers)
     (delete-file test-peer-file)
     (delete-file test-user-file)
     
@@ -55,14 +55,14 @@
 
 (defun test-ipc-message-parsing ()
   "Test that IPC messages are parsed correctly for peer selection."
-  (let ((test-message "{\"flow\":\"req\",\"domain\":\"code\",\"action\":\"peer:select\",\"data\":{\"_id\":\"67bc3432cf9b5efe459008dd\",\"name\":\"Alice\",\"company\":\"Code Awareness\",\"phone\":\"123-123-1234\",\"email\":\"alice@codeawareness.com\",\"createdAt\":\"2025-02-24T08:56:18.540Z\",\"active\":true,\"updatedAt\":\"2025-08-29T00:38:56.447Z\",\"lang\":\"en\"},\"err\":\"\",\"caw\":\"0\"}"))
+  (let ((test-message "{\"flow\":\"req\",\"domain\":\"code\",\"action\":\"peer:select\",\"data\":{\"_id\":\"67bc3432cf9b5efe459008dd\",\"name\":\"Alice\",\"company\":\"Code Awareness\",\"phone\":\"123-123-1234\",\"email\":\"alice@code-awareness.com\",\"createdAt\":\"2025-02-24T08:56:18.540Z\",\"active\":true,\"updatedAt\":\"2025-08-29T00:38:56.447Z\",\"lang\":\"en\"},\"err\":\"\",\"caw\":\"0\"}"))
     ;; Mock the peer selection handler to track calls
     (let ((peer-select-called nil))
-      (flet ((codeawareness--handle-peer-select (data)
+      (flet ((code-awareness--handle-peer-select (data)
                (setq peer-select-called t)
                (assert (equal (alist-get 'name data) "Alice")
                        "Peer name should be parsed correctly")))
-        (codeawareness--handle-ipc-message test-message)
+        (code-awareness--handle-ipc-message test-message)
         (assert peer-select-called "Peer selection handler should be called")))
     
     (message "IPC message parsing tests passed!")))
@@ -70,14 +70,14 @@
 (defun test-event-handler-registration ()
   "Test that event handlers are registered correctly."
   ;; Initialize event handlers
-  (codeawareness--init-event-handlers)
+  (code-awareness--init-event-handlers)
   
   ;; Test that handlers are registered
-  (assert (gethash "peer:select" codeawareness--events-table)
+  (assert (gethash "peer:select" code-awareness--events-table)
           "peer:select handler should be registered")
-  (assert (gethash "branch:select" codeawareness--events-table)
+  (assert (gethash "branch:select" code-awareness--events-table)
           "branch:select handler should be registered")
-  (assert (gethash "auth:logout" codeawareness--events-table)
+  (assert (gethash "auth:logout" code-awareness--events-table)
           "auth:logout handler should be registered")
   
   (message "Event handler registration tests passed!"))

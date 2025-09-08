@@ -38,12 +38,10 @@ Clone this repository, and then in your emacs config, add the following lines, a
 
 ```
   ;; Code Awareness Configuration
-  (let ((codeawareness-path "/home/username/ca.emacs/"))
-    (when (file-exists-p codeawareness-path)
-      (add-to-list 'load-path codeawareness-path)
-      (require 'codeawareness-config)
-      (require 'codeawareness-logger)
-      (require 'codeawareness)
+  (let ((code-awareness-path "/home/username/ca.emacs/"))
+    (when (file-exists-p code-awareness-path)
+      (add-to-list 'load-path code-awareness-path)
+      (require 'code-awareness)
       (message "Code Awareness loaded successfully")))
 ```
 
@@ -54,12 +52,10 @@ If you're using Spacemacs, you can add the Code Awareness configuration to your 
 ```elisp
 (defun dotspacemacs/user-config ()
   ;; Code Awareness Configuration
-  (let ((codeawareness-path "/home/username/ca.emacs/"))
-    (when (file-exists-p codeawareness-path)
-      (add-to-list 'load-path codeawareness-path)
-      (require 'codeawareness-config)
-      (require 'codeawareness-logger)
-      (require 'codeawareness)
+  (let ((code-awareness-path "/home/username/ca.emacs/"))
+    (when (file-exists-p code-awareness-path)
+      (add-to-list 'load-path code-awareness-path)
+      (require 'code-awareness)
       (message "Code Awareness loaded successfully"))))
 
 ### Loading Compiled Version (.elc files)
@@ -80,17 +76,15 @@ To load the compiled version instead of the source files for better performance:
    ```elisp
    (defun dotspacemacs/user-config ()
      ;; Code Awareness Configuration (compiled version)
-     (let ((codeawareness-path "/home/username/ca.emacs/"))
-       (when (file-exists-p codeawareness-path)
-         (add-to-list 'load-path codeawareness-path)
+     (let ((code-awareness-path "/home/username/ca.emacs/"))
+       (when (file-exists-p code-awareness-path)
+         (add-to-list 'load-path code-awareness-path)
          ;; Force loading of compiled version if available
-         (let ((compiled-file (expand-file-name "codeawareness.elc" codeawareness-path)))
+         (let ((compiled-file (expand-file-name "code-awareness.elc" code-awareness-path)))
            (if (file-exists-p compiled-file)
                (load compiled-file)
              ;; Fallback to source if no compiled version
-             (require 'codeawareness-config)
-             (require 'codeawareness-logger)
-             (require 'codeawareness)))
+             (require 'code-awareness)))
          (message "Code Awareness loaded successfully"))))
    ```
 
@@ -102,9 +96,9 @@ To load the compiled version instead of the source files for better performance:
 - **Optional**: Use step 3 only if you want to force compiled-only loading
 
 * Quick Start
- * First download and run the [[https://codeawareness.com]][Code Awareness] application.
+ * First download and run the [[https://code-awareness.com]][Code Awareness] application.
  * Login to Code Awareness through the application.
- * In emacs, run the `codeawareness-mode` command to enter Code Awareness minor mode.
+ * In emacs, run the `code-awareness-mode` command to enter Code Awareness minor mode.
  * The Code Awareness application is used side by side with emacs, VSCode, etc, i.e. on a wide-screen monitor, or on a second monitor.
 
 * Contributing
@@ -118,7 +112,7 @@ The following is a list of guidelines that should be met (exceptions confirm the
  - There must not be any compiler warnings.
  - The test suite must pass.
 
-Code Awareness uses cask to setup a local testing environment and a Makefile that simplifies compiling and testing the codebase. First run ~cask install~ to locally pull codeawareness' dependencies. Then you can use the following Makefile targets:
+Code Awareness uses cask to setup a local testing environment and a Makefile that simplifies compiling and testing the codebase. First run ~cask install~ to locally pull code-awareness' dependencies. Then you can use the following Makefile targets:
 
  - make prepare :: Downloads and updates Cask's dependencies. Is a dependency of the ~test~ and ~compile~ targets.
  - make compile :: Compiles the code base (and treats compiler warnings as errors).
@@ -128,7 +122,7 @@ Code Awareness uses cask to setup a local testing environment and a Makefile tha
 
 * Working With The Code Base
 
-If you want to delve into the codeawareness' code base, check out [[https://github.com/CodeAwareness/codeawareness-emacs/wiki][the wiki]] for some general pointers.
+If you want to delve into the code-awareness' code base, check out [[https://github.com/CodeAwareness/code-awareness-emacs/wiki][the wiki]] for some general pointers.
 
 * Dependencies
  - emacs >= 26.1 (>= 27.1 for tab-bar)

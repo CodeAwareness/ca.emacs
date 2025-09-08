@@ -7,11 +7,11 @@ EMACS ?= emacs
 EMACSFLAGS       = -Q -batch -L .
 COMPILE_COMMAND  = --eval "(setq byte-compile-error-on-warn t)" -f batch-byte-compile
 CHECKDOC_COMMAND = -l "test/checkdock.el"
-LINT_DIR         = /tmp/codeawareness
+LINT_DIR         = /tmp/code-awareness
 LINT_FLAG        = --eval "(setq byte-compile-dest-file-function (lambda (f) (concat \"$(LINT_DIR)\" (file-name-nondirectory f) \"c\")))"
 TEST_COMMAND     = buttercup -L . $(NO_LOAD_WARNINGS)
 
-ELS  = codeawareness.el codeawareness-config.el codeawareness-logger.el
+ELS  = code-awareness.el
 ELCS = $(ELS:.el=.elc)
 
 .PHONY: test compile checkdoc clean lint prepare clean-start .prepare-lint
@@ -46,7 +46,7 @@ checkdoc:
 	@$(CASK) exec $(EMACS) $(EMACSFLAGS) $(CHECKDOC_COMMAND)
 
 clean-start: prepare
-	@$(CASK) exec $(EMACS) -Q -L . --eval "(require 'codeawareness)" &
+	@$(CASK) exec $(EMACS) -Q -L . --eval "(require 'code-awareness)" &
 
 .prepare-lint:
 	@rm -rf $(LINT_DIR)

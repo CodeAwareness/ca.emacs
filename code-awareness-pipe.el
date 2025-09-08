@@ -1,9 +1,11 @@
-;;; codeawareness-pipe.el --- Pipes for Code Awareness -*- lexical-binding: t -*-
+;;; code-awareness-pipe.el --- Pipes for Code Awareness -*- lexical-binding: t -*-
 
 ;; Copyright (C) 2018 Isaac Lewis
 
 ;; Author: Isaac Lewis <isaac.b.lewis@gmail.com>
-;; Maintainer: Mark Vasile <mark@codeawareness.com>
+;; Maintainer Isaac Lewis <isaac.b.lewis@gmail.com>
+;; Homepage: https://github.com/IkeLewis/process-sockets
+;; Package-Requires: ((emacs "27.1"))
 ;; Version: 1.0.0
 ;; Keywords: comm
 
@@ -27,7 +29,7 @@
 ;; -----------
 ;;
 ;; An (Emacs) pipe is a buffer together with several operations
-;; (codeawareness-pipe-read!, codeawareness-pipe-write!, etc) and has the following properties:
+;; (code-awareness-pipe-read!, code-awareness-pipe-write!, etc) and has the following properties:
 ;;
 ;;     buf_size: the size of the pipe's buffer
 ;;
@@ -84,7 +86,8 @@
 ;;
 ;; The columns below show the state of the buffer and its
 ;; corresponding variables immediately after the given event occurs.
-;;
+;;; Keywords: code awareness, collaboration, development, convenience tools
+;; Homepage: https://github.com/CodeAwareness/ca.emacs;
 ;; |-----------------+--------+----------+-----------+----------+----------|
 ;; | event           | buffer | num_writ | write_pos | num_read | read_pos |
 ;; |-----------------+--------+----------+-----------+----------+----------|
@@ -99,20 +102,20 @@
 ;;{{{
 ;;; Code:
 
-;; For 'defun*'
-(require 'cl)
+;; For 'cl-defun'
+(require 'cl-lib)
 ;; For 'string-empty-p'
 (require 'subr-x)
 
 ;;{{{
 ;;; Customizable Variables
 
-(defvar codeawareness-pipe-debug nil "Set to true to log debugging info in the
+(defvar code-awareness-pipe-debug nil "Set to true to log debugging info in the
 *Messages* buffer.")
 
-(defvar codeawareness-pipe-default-buf-size 65536 "The default buffer size for pipes.")
+(defvar code-awareness-pipe-default-buf-size 65536 "The default buffer size for pipes.")
 
-(defvar codeawareness-pipe-default-newline-delim "\n" "This should usually be set
+(defvar code-awareness-pipe-default-newline-delim "\n" "This should usually be set
 to the default newline string used by the OS.")
 
 ;;}}}
@@ -120,24 +123,24 @@ to the default newline string used by the OS.")
 ;;{{{
 ;;; First-class variables
 
-(defun codeawareness-pipe-make-var (val)
+(defun code-awareness-pipe-make-var (val)
   (list val))
 
-(defalias 'codeawareness-pipe-var-ref 'car)
+(defalias 'code-awareness-pipe-var-ref 'car)
 
-(defmacro codeawareness-pipe-set-var! (var new-val)
+(defmacro code-awareness-pipe-set-var! (var new-val)
   `(setf (car ,var) ,new-val))
 
-(defmacro codeawareness-pipe-inc-var! (var amt)
+(defmacro code-awareness-pipe-inc-var! (var amt)
   `(setf (car ,var) (+ (car ,var) ,amt)))
 
-(defmacro codeawareness-pipe-dec-var! (var amt)
+(defmacro code-awareness-pipe-dec-var! (var amt)
   `(setf (car ,var) (- (car ,var) ,amt)))
 
-(defmacro codeawareness-pipe-inc-var-mod-n! (var amt n)
+(defmacro code-awareness-pipe-inc-var-mod-n! (var amt n)
   `(setf (car ,var) (mod (+ (car ,var) ,amt) ,n)))
 
-(defmacro codeawareness-pipe-dec-var-mod-n! (var amt n)
+(defmacro code-awareness-pipe-dec-var-mod-n! (var amt n)
   `(setf (car ,var) (mod (- (car ,var) ,amt) ,n)))
 
 ;;}}}
@@ -145,7 +148,7 @@ to the default newline string used by the OS.")
 ;;{{{
 ;;; Utility functions
 
-(defun codeawareness-pipe-memcpy! (src dest dest-offset)
+(defun code-awareness-pipe-memcpy! (src dest dest-offset)
   "Copy `src' to `dest' starting at offset `dest-offset'; if the
 length of `src' plus `dest-offset' is greater than the length of
 `dest', then the writing wraps.  If `src' is longer then `dest'
@@ -163,7 +166,7 @@ of range, then an invalid offset error is thrown."
 	   (store-substring dest 0 (substring src (- (length dest)
 						     dest-offset))))))
 
-(defun codeawareness-pipe-clockwise-substring (str start end)
+(defun code-awareness-pipe-clockwise-substring (str start end)
   "Return the clockwise-substring of a non-empty string `str'
 that starts at `start' and ends at `end'.  Imagine that the
 characters of `str' are positioned around a 0-based clock with
@@ -199,16 +202,16 @@ The following table gives some examples of clockwise substrings.
 ;;{{{
 ;;; Debugging/logging functions
 
-(defun codeawareness-pipe-debug (fmt-str &rest args)
-  (when codeawareness-pipe-debug
-    (apply 'message (concat "codeawareness-pipe-debug: " fmt-str "\n") args)))
+(defun code-awareness-pipe-debug (fmt-str &rest args)
+  (when code-awareness-pipe-debug
+    (apply 'message (concat "code-awareness-pipe-debug: " fmt-str "\n") args)))
 
 ;;}}}
 
 ;;{{{
 ;;; Private Macros and Functions
 
-(defmacro codeawareness-pipe-with-pipe (pipe &rest body)
+(defmacro code-awareness-pipe-with-pipe (pipe &rest body)
   "Evaluate `body' in the environment of `pipe'."
   `(let* ((env (funcall ,pipe 'env))
 	  (num-writ (cdr (assoc 'num-writ env)))
@@ -224,16 +227,17 @@ The following table gives some examples of clockwise substrings.
 ;;{{{
 ;;; Public API
 
-(defun* codeawareness-pipe-make-pipe (&optional (buf-size codeawareness-pipe-default-buf-size)
+;;;###autoload
+(cl-defun code-awareness-pipe-make-pipe (&optional (buf-size code-awareness-pipe-default-buf-size)
 			     (underflow-handler
 			      (lambda ()
 				(error "Buffer underflow"))))
   "Create a new pipe."
   (let* ( ;; The environment
-	 (env `((num-writ . ,(codeawareness-pipe-make-var 0))
-		(write-pos . ,(codeawareness-pipe-make-var 0))
-		(num-read . ,(codeawareness-pipe-make-var buf-size))
-		(read-pos . ,(codeawareness-pipe-make-var 0))
+	 (env `((num-writ . ,(code-awareness-pipe-make-var 0))
+		(write-pos . ,(code-awareness-pipe-make-var 0))
+		(num-read . ,(code-awareness-pipe-make-var buf-size))
+		(read-pos . ,(code-awareness-pipe-make-var 0))
 		(buf . ,(make-string buf-size 0))
 		(underflow-handler .,underflow-handler))))
     (lambda (fn-or-var)
@@ -246,63 +250,63 @@ The following table gives some examples of clockwise substrings.
 ;;{{{
 ;;; Accessors
 
-(defun codeawareness-pipe-input-stream (pipe)
+(defun code-awareness-pipe-input-stream (pipe)
   "Return the pipe's input stream.  See Ouput Streams in section
 18.2 of the ELISP reference manual."
   (lambda (&optional unread)
-    (codeawareness-pipe-read! pipe unread)))
+    (code-awareness-pipe-read! pipe unread)))
 
-(defun codeawareness-pipe-output-stream (pipe)
+(defun code-awareness-pipe-output-stream (pipe)
   "Return the pipe's output stream.  See Ouput Streams in section
 18.4 of the ELISP reference manual."
   (lambda (char)
-    (codeawareness-pipe-write! pipe char)))
+    (code-awareness-pipe-write! pipe char)))
 
 ;;}}}
 
 ;;{{{
 ;;; Peeking Functions
 
-(defun codeawareness-pipe-peek (pipe)
+(defun code-awareness-pipe-peek (pipe)
   "Return the next character to be read from pipe, but don't
 modify the pipe."
-  (let ((char (codeawareness-pipe-read! pipe)))
+  (let ((char (code-awareness-pipe-read! pipe)))
     ;; Unread char from pipe
-    (codeawareness-pipe-read! pipe char)
+    (code-awareness-pipe-read! pipe char)
     char))
 
-(defun codeawareness-pipe-peek-ln (pipe)
+(defun code-awareness-pipe-peek-ln (pipe)
   "Return the next line to be read from pipe, but don't modify
   the pipe."
-  (let ((line (codeawareness-pipe-read-ln! pipe)))
+  (let ((line (code-awareness-pipe-read-ln! pipe)))
     (dolist (char (reverse line))
       ;; unread the character
-      (codeawareness-pipe-read! pipe char))))
+      (code-awareness-pipe-read! pipe char))))
 
-(defun codeawareness-pipe-peek-sexp (pipe)
+(defun code-awareness-pipe-peek-sexp (pipe)
   "Return the next sexp to be read from pipe, but don't modify
   the pipe."
-  (let ((sexp (codeawareness-pipe-read-sexp! pipe)))
+  (let ((sexp (code-awareness-pipe-read-sexp! pipe)))
     (dolist (char (reverse sexp))
       ;; unread the character
-      (codeawareness-pipe-read! pipe char))))
+      (code-awareness-pipe-read! pipe char))))
 
-(defun codeawareness-pipe-peek-all (pipe)
+(defun code-awareness-pipe-peek-all (pipe)
   "Return a string containing all of the pipe's currently
   available input, but don't modify the pipe."
-  (codeawareness-pipe-with-pipe
+  (code-awareness-pipe-with-pipe
    pipe
    (let* ((buf-size (length buf))
 	  ;; after-last-pos -- the position just after the last
 	  ;; character to be read
-	  (after-last-pos (mod (+ (codeawareness-pipe-var-ref read-pos)
-				  (codeawareness-pipe-var-ref num-writ))
+	  (after-last-pos (mod (+ (code-awareness-pipe-var-ref read-pos)
+				  (code-awareness-pipe-var-ref num-writ))
 			       buf-size)))
-     (if (> (codeawareness-pipe-var-ref num-writ) 0)
+     (if (> (code-awareness-pipe-var-ref num-writ) 0)
 	 ;; The pipe's available input can only be modeled as a
 	 ;; clockwise substring when the buffer is non-empty.
-	 (codeawareness-pipe-clockwise-substring buf
-				   (codeawareness-pipe-var-ref read-pos)
+	 (code-awareness-pipe-clockwise-substring buf
+				   (code-awareness-pipe-var-ref read-pos)
 				   after-last-pos)
        ""))))
 
@@ -311,7 +315,7 @@ modify the pipe."
 ;;{{{
 ;;; Reading Functions
 
-(defun codeawareness-pipe-read! (pipe &optional unread)
+(defun code-awareness-pipe-read! (pipe &optional unread)
   "Reads a character from `pipe' if `unread' is nil.
 Otherwise it unreads the character `unread' from `pipe'."
   ;; This function must support two kinds of calls:
@@ -325,99 +329,97 @@ Otherwise it unreads the character `unread' from `pipe'."
   ;;   happens when the Lisp reader reads one character too many and
   ;;   wants to put it back where it came from.  In this case, it
   ;;   makes no difference what value is returned.
-  (codeawareness-pipe-with-pipe
+  (code-awareness-pipe-with-pipe
    pipe
    (let ((buf-size (length buf)))
-     (cond (unread (codeawareness-pipe-debug "unreading %s" unread)
-		   (if (= (codeawareness-pipe-var-ref num-writ) buf-size)
+     (cond (unread (code-awareness-pipe-debug "unreading %s" unread)
+		   (if (= (code-awareness-pipe-var-ref num-writ) buf-size)
 		       (progn (error "Buffer overflow (unread)"))
-		     (prog1 unread (codeawareness-pipe-inc-var! num-read  -1)
-			    (codeawareness-pipe-inc-var! num-writ 1)
+		     (prog1 unread (code-awareness-pipe-inc-var! num-read  -1)
+			    (code-awareness-pipe-inc-var! num-writ 1)
 			    ;; unreading does not alter write-pos
-			    (codeawareness-pipe-dec-var-mod-n! read-pos 1 buf-size))))
-	   ((= (codeawareness-pipe-var-ref num-read) buf-size)
-	    (codeawareness-pipe-debug "handling undeflow")
-	    (codeawareness-pipe-debug "got input %s" (funcall underflow-handler))
-	    (codeawareness-pipe-read! pipe))
-	   (t (let ((res (prog1 (aref buf (codeawareness-pipe-var-ref read-pos))
-			   (codeawareness-pipe-inc-var! num-read  1)
-			   (codeawareness-pipe-inc-var! num-writ -1)
+			    (code-awareness-pipe-dec-var-mod-n! read-pos 1 buf-size))))
+	   ((= (code-awareness-pipe-var-ref num-read) buf-size)
+	    (code-awareness-pipe-debug "handling undeflow")
+	    (code-awareness-pipe-debug "got input %s" (funcall underflow-handler))
+	    (code-awareness-pipe-read! pipe))
+	   (t (let ((res (prog1 (aref buf (code-awareness-pipe-var-ref read-pos))
+			   (code-awareness-pipe-inc-var! num-read  1)
+			   (code-awareness-pipe-inc-var! num-writ -1)
 			   ;; reading does not alter write-pos
-			   (codeawareness-pipe-inc-var-mod-n! read-pos 1 buf-size))))
-		(codeawareness-pipe-debug "read %c" res)
+			   (code-awareness-pipe-inc-var-mod-n! read-pos 1 buf-size))))
+		(code-awareness-pipe-debug "read %c" res)
 		res))))))
 
-(defun codeawareness-pipe-read-ln! (pipe)
+(defun code-awareness-pipe-read-ln! (pipe)
   "Read a line from `pipe'."
   (let ((chars '()))
     (while (not (funcall (lambda (chars)
-			   (string-suffix-p codeawareness-pipe-default-newline-delim
+			   (string-suffix-p code-awareness-pipe-default-newline-delim
 					    (concat chars)))
-			 (setq chars (append chars (list (codeawareness-pipe-read! pipe)))))))
+			 (setq chars (append chars (list (code-awareness-pipe-read! pipe)))))))
     (concat chars)))
 
-(defun codeawareness-pipe-read-sexp! (pipe)
+(defun code-awareness-pipe-read-sexp! (pipe)
   "Read an sexp from `pipe'."
   (read (lambda (&optional unread)
-	  (codeawareness-pipe-read! pipe unread))))
+	  (code-awareness-pipe-read! pipe unread))))
 
-(defun codeawareness-pipe-read-all! (pipe)
+(defun code-awareness-pipe-read-all! (pipe)
   "Reads all currently available characters from `pipe' into a
 string."
-  (codeawareness-pipe-with-pipe
+  (code-awareness-pipe-with-pipe
    pipe
    (let* ((buf-size (length buf))
-	  (after-last-pos (mod (+ (codeawareness-pipe-var-ref read-pos)
-				  (codeawareness-pipe-var-ref num-writ))
+	  (after-last-pos (mod (+ (code-awareness-pipe-var-ref read-pos)
+				  (code-awareness-pipe-var-ref num-writ))
 			       buf-size)))
      ;; after-last-pos -- the position just after the last
      ;; character to be read
      (prog1
-	 (if (< after-last-pos (codeawareness-pipe-var-ref read-pos))
-	     (concat (substring-no-properties buf (codeawareness-pipe-var-ref read-pos))
+	 (if (< after-last-pos (code-awareness-pipe-var-ref read-pos))
+	     (concat (substring-no-properties buf (code-awareness-pipe-var-ref read-pos))
 		     (substring-no-properties buf 0 after-last-pos))
-	   (substring-no-properties buf (codeawareness-pipe-var-ref read-pos) after-last-pos))
-       (codeawareness-pipe-inc-var-mod-n! read-pos (codeawareness-pipe-var-ref num-writ) buf-size)
-       (codeawareness-pipe-set-var! num-read buf-size)
+	   (substring-no-properties buf (code-awareness-pipe-var-ref read-pos) after-last-pos))
+       (code-awareness-pipe-inc-var-mod-n! read-pos (code-awareness-pipe-var-ref num-writ) buf-size)
+       (code-awareness-pipe-set-var! num-read buf-size)
        ;; reading does not alter the write position
-       (codeawareness-pipe-set-var! num-writ 0)))))
+       (code-awareness-pipe-set-var! num-writ 0)))))
 ;;}}}
 
 ;;{{{
 ;;; Writing Functions
 
-(defun codeawareness-pipe-write! (pipe char-or-str)
+(defun code-awareness-pipe-write! (pipe char-or-str)
   "Writes the `char-or-str' to `pipe'."
   (let ((str (if (characterp char-or-str)
 		 (char-to-string char-or-str)
 	       char-or-str)))
-   (codeawareness-pipe-with-pipe
+   (code-awareness-pipe-with-pipe
     pipe
     (let ((buf-size (length buf)))
-      (cond ((> (+ (codeawareness-pipe-var-ref num-writ) (length str)) buf-size)
+      (cond ((> (+ (code-awareness-pipe-var-ref num-writ) (length str)) buf-size)
 	     (error "Buffer overflow"))
 	    (t
-	     (codeawareness-pipe-debug "wrote '%s'" str)
-	     (prog1 (codeawareness-pipe-memcpy! str buf (codeawareness-pipe-var-ref write-pos))
-	       (codeawareness-pipe-inc-var! num-writ (length str))
-	       (codeawareness-pipe-dec-var! num-read (length str))
+	     (code-awareness-pipe-debug "wrote '%s'" str)
+	     (prog1 (code-awareness-pipe-memcpy! str buf (code-awareness-pipe-var-ref write-pos))
+	       (code-awareness-pipe-inc-var! num-writ (length str))
+	       (code-awareness-pipe-dec-var! num-read (length str))
 	       ;; writing does not alter the read position
-	       (codeawareness-pipe-inc-var-mod-n! write-pos (length str) buf-size))))))))
+	       (code-awareness-pipe-inc-var-mod-n! write-pos (length str) buf-size))))))))
 
-(defun codeawareness-pipe-write-ln! (pipe &optional string)
+(defun code-awareness-pipe-write-ln! (pipe &optional string)
   "Write `string' followed by a new line delimiter to `pipe'."
-  (codeawareness-pipe-write! pipe (concat (or string "") codeawareness-pipe-default-newline-delim)))
+  (code-awareness-pipe-write! pipe (concat (or string "") code-awareness-pipe-default-newline-delim)))
 
-(defun codeawareness-pipe-write-sexp! (pipe sexp)
+(defun code-awareness-pipe-write-sexp! (pipe sexp)
   "Write `string' followed by a new line delimiter to `pipe'."
-  (prin1 sexp (lambda (c) (codeawareness-pipe-write! pipe c)))
-  (codeawareness-pipe-write! pipe " "))
+  (prin1 sexp (lambda (c) (code-awareness-pipe-write! pipe c)))
+  (code-awareness-pipe-write! pipe " "))
 
 ;;}}}
 
 ;;}}}
 
-;;}}}
-
-(provide 'codeawareness-pipe)
-;;; codeawareness-pipe.el ends here
+(provide 'code-awareness-pipe)
+;;; code-awareness-pipe.el ends here
