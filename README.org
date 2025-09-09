@@ -34,6 +34,8 @@ It requires the Code Awareness binary (proprietary, licensed separately) to func
 
 # Installation
 
+First please download and install Code Awareness from [[https://codeawareness.com][Code Awareness website]].
+
 Clone this repository, and then in your emacs config, add the following lines, and replace the /home/username/ca.emacs/ with the path of your choice.
 
 ```
